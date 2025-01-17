@@ -4,18 +4,16 @@ import cse311.RV32iCpu;
 
 public class RV32iComputer {
     private RV32iCpu cpu;
-    private byte[] memory;
+    private SimpleMemory memory;
 
     public RV32iComputer(int memSize) {
-        this.cpu = new RV32iCpu(memSize);
-        this.mem = new byte[memSize];
+        memory = new SimpleMemory(memSize);
+        this.cpu = new RV32iCpu(memory);
 
     }
 
     public void initProgram(byte[] program) {
-        for (int i = 0; i < program.length; i++) {
-            this.memory[i] = program[i];
-        }
+        memory.initializeMemory(0, program);
     }
 
     @Override

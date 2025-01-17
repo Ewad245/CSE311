@@ -9,7 +9,9 @@ public class App {
     }
 
     public static void main(String[] args) {
-        byte[] memory = { 38, 12, 61, 0xef, 0, 0, 0, 0 };
+        RV32iComputer computer = new RV32iComputer(1024);
+        byte[] program = { 38, 12, 61, (byte) 0xef, 0, 0, 0, 0 };
+        computer.initProgram(program);
 
     }
 }

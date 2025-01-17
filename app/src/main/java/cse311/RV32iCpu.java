@@ -43,7 +43,7 @@ public class RV32iCpu {
         // Read 32-bit instruction from memory at PC
         int instruction = 0;
 
-        // RV32I is little-endian, so we need to read 4 bytes and combine them
+        // Read 4 bytes and combine them
         try {
             byte byte0 = memory.readByte(pc);
             byte byte1 = memory.readByte(pc + 1);

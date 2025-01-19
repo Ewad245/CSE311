@@ -77,10 +77,10 @@ public class RV32iCpu {
         // Extract instruction fields based on RISC-V RV32I format
         int opcode = instructionInt & 0x7F;              // bits 0-6
         int rd = (instructionInt >> 7) & 0x1F;           // bits 7-11
-        int funct3 = (instructionInt >> 12) & 0x7;       // bits 12-14
+        int func3 = (instructionInt >> 12) & 0x7;       // bits 12-14
         int rs1 = (instructionInt >> 15) & 0x1F;         // bits 15-19
         int rs2 = (instructionInt >> 20) & 0x1F;         // bits 20-24
-        int funct7 = (instructionInt >> 25) & 0x7F;      // bits 25-31
+        int func7 = (instructionInt >> 25) & 0x7F;      // bits 25-31
 
         // Immediate values for different instruction formats
         // I-type: Sign extended 12-bit immediate

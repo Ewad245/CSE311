@@ -67,6 +67,48 @@ public class RV32iCpu {
     }
 
     private void decode() {
+        // Combine the bytes into a 32-bit instruction
+    int instructionInt = (instruction[3] & 0xFF) << 24 |
+    (instruction[2] & 0xFF) << 16 |
+    (instruction[1] & 0xFF) << 8 |
+    (instruction[0] & 0xFF);
+
+// Extract instruction fields based on RISC-V RV32I format
+int opcode = instructionInt & 0x7F;              // bits 0-6
+int rd = (instructionInt >> 7) & 0x1F;           // bits 7-11
+int funct3 = (instructionInt >> 12) & 0x7;       // bits 12-14
+int rs1 = (instructionInt >> 15) & 0x1F;         // bits 15-19
+int rs2 = (instructionInt >> 20) & 0x1F;         // bits 20-24
+int funct7 = (instructionInt >> 25) & 0x7F;      // bits 25-31
+
+// Immediate values for different instruction formats
+// I-type: Sign extended 12-bit immediate
+int imm_i = ((instructionInt >> 20) << 20) >> 20;
+
+// S-type: Sign extended 12-bit immediate
+int imm_s = (((instructionInt >> 25) << 5) | ((instructionInt >> 7) & 0x1F));
+imm_s = (imm_s << 20) >> 20; // Sign extend
+
+// B-type: Sign extended 13-bit immediate
+int imm_b = (((instructionInt >> 31) << 12) |   // imm[12]
+((instructionInt >> 7) & 0x1) << 11) | // imm[11]
+((instructionInt >> 25) & 0x3F) << 5 | // imm[10:5]
+((instructionInt >> 8) & 0xF) << 1;    // imm[4:1]
+imm_b = (imm_b << 19) >> 19; // Sign extend
+
+// U-type: 20-bit immediate, shifted left by 12
+int imm_u = instructionInt & 0xFFFFF000;
+
+// J-type: Sign extended 21-bit immediate
+int imm_j = (((instructionInt >> 31) << 20) |    // imm[20]
+((instructionInt >> 12) & 0xFF) << 12 | // imm[19:12]
+((instructionInt >> 20) & 0x1) << 11 |  // imm[11]
+((instructionInt >> 21) & 0x3FF) << 1); // imm[10:1]
+imm_j = (imm_j << 11) >> 11; // Sign extend
+
+// You might want to store these decoded values in class fields
+// or create a structure to hold them for the execute stage
+
     }
 
     private void execute() {

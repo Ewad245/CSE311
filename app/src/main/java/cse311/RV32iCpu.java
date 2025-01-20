@@ -1,4 +1,4 @@
-package main.java.cse311;
+package cse311;
 
 public class RV32iCpu {
     private byte[] x = new byte[32];

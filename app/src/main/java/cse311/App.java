@@ -9,7 +9,7 @@ public class App {
     }
 
     public static void main(String[] args) {
-        byte[] memory = { 38, 12, 61, 0xef, 0, 0, 0, 0 };
+        byte[] memory = { 38, 12, 61, (byte) 0xef, 0, 0, 0, 0 };
 
     }
 }

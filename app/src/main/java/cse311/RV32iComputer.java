@@ -6,9 +6,9 @@ public class RV32iComputer {
     private RV32iCpu cpu;
     private byte[] memory;
 
-    public RV32iComputer(int memSize) {
+    public RV32iComputer(byte[] memSize) {
         this.cpu = new RV32iCpu(memSize);
-        this.mem = new byte[memSize];
+        this.memory = new byte[memSize.length];
 
     }
 

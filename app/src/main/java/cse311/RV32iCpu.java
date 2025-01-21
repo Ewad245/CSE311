@@ -2,7 +2,7 @@ package cse311;
 
 public class RV32iCpu {
 
-    private byte[] x = new byte[32];
+    private int[] x = new int[32];
     private int pc = 0;
     private byte[] instruction;
     private static final int INSTRUCTION_SIZE = 4; // 32-bit instructions
@@ -31,6 +31,17 @@ public class RV32iCpu {
         });
         this.running = true;
         this.cpuThread.start();
+    }
+
+    public void turnOff() {
+        this.running = false;
+        try {
+            if (cpuThread != null) {
+                cpuThread.join();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private void fetchExecuteCycle() throws Exception {

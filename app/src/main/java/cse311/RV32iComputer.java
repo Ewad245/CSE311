@@ -12,13 +12,17 @@ public class RV32iComputer {
 
     }
 
-    public void initProgram(byte[] program) {
+
+    public void initProgram(byte[] program) throws MemoryAccessException {
         memory.initializeMemory(0, program);
     }
 
     @Override
     public String toString() {
-        // TODO Auto-generated method stub
-        return super.toString();
+        StringBuilder sb = new StringBuilder();
+        sb.append("RV32i Computer State:\n");
+        sb.append("Memory Size: ").append(memory.getSize()).append(" bytes\n");
+        // Add CPU state when available
+        return sb.toString();
     }
 }

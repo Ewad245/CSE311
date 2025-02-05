@@ -9,9 +9,6 @@ public class App {
     }
 
     public static void main(String[] args) {
-<<<<<<< Updated upstream
-        byte[] memory = { 38, 12, 61, (byte) 0xef, 0, 0, 0, 0 };
-=======
         SimpleMemory memory = new SimpleMemory(8 * 1024 * 1024);
         MemoryManager memoryManager = new MemoryManager(memory);
         RV32iCpu cpu = new RV32iCpu(memoryManager);
@@ -39,7 +36,6 @@ public class App {
             System.err.println("Error running program: " + e.getMessage());
             e.printStackTrace();
         }
->>>>>>> Stashed changes
 
     }
 }

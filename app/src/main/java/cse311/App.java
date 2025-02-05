@@ -3,6 +3,8 @@
  */
 package cse311;
 
+import java.io.IOException;
+
 public class App {
     public String getGreeting() {
         return "Hello World!";

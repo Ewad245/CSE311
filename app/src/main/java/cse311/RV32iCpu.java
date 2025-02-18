@@ -314,7 +314,9 @@ public class RV32iCpu {
 
             // Jump instructions
             case 0b1101111: // JAL
-                x[rd] = pc;
+                if (rd != 0) {
+                    x[rd] = pc;
+                }
                 pc += imm_j - INSTRUCTION_SIZE;
                 break;
 

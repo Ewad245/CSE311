@@ -14,30 +14,14 @@ public class App {
         SimpleMemory memory = new SimpleMemory(8 * 1024 * 1024);
         MemoryManager memoryManager = new MemoryManager(memory);
         RV32iCpu cpu = new RV32iCpu(memoryManager);
-        ElfLoader elfLoader = new ElfLoader(memoryManager);
-
+        
+        // Keep the main thread alive while the WebSocket server is running
         try {
-            // Load ELF file
-            elfLoader.loadElf("./app/src/main/resources/program.elf");
-
-            // Set CPU's program counter to ELF entry point
-            // cpu.setPC(elfLoader.getEntryPoint());
-
-            // Start the CPU
-            int entryPoint = elfLoader.getEntryPoint();
-            System.out.println("Entry Point: " + entryPoint);
-            cpu.setProgramCounterEntryPoint(entryPoint);
-            cpu.turnOn();
-
-            // Optional: Print memory map for debugging
-            System.out.println(memoryManager.getMemoryMap());
-            // Optional: Print CPU state after execution
-            // System.out.println(cpu.getState());
-
-        } catch (Exception e) {
-            System.err.println("Error running program: " + e.getMessage());
-            e.printStackTrace();
+            while (true) {
+                Thread.sleep(1000);
+            }
+        } catch (InterruptedException e) {
+            System.err.println("Server interrupted: " + e.getMessage());
         }
-
     }
 }

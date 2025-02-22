@@ -1,8 +1,12 @@
 package cse311;
 
+import java.util.HashMap;
+import java.util.Map;
+
 public class RV32iCpu {
 
     private int[] x = new int[32];
+    private int[] csr = new int[4096]; // CSR registers (12-bit addresses)
     private int lastPC = -1;
     private int loopCount = 0;
     private int pc = 0;
@@ -13,9 +17,12 @@ public class RV32iCpu {
     private Thread cpuThread;
     private boolean running = false;
     private static final int LOOP_THRESHOLD = 1000; // Maximum times to execute same instruction
+    private EmulatorWebSocket webSocket;
 
     public RV32iCpu(MemoryManager memory) {
         this.memory = memory;
+        this.webSocket = new EmulatorWebSocket(8080, this);
+        this.webSocket.start();
     }
 
     public void setProgramCounterEntryPoint(int entryPoint) {
@@ -38,6 +45,10 @@ public class RV32iCpu {
         });
         this.running = true;
         this.cpuThread.start();
+    }
+
+    public void stopEmulation() {
+        this.running = false;
     }
 
     private void fetchExecuteCycle() throws Exception {
@@ -366,6 +377,21 @@ public class RV32iCpu {
                 "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"
         };
 
+        // Create state object
+        Map<String, Object> state = new HashMap<>();
+        state.put("pc", String.format("%08X", pc));
+        Map<String, String> registers = new HashMap<>();
+
+        for (int i = 0; i < x.length; i++) {
+            if (x[i] != 0) {
+                registers.put(regNames[i], String.format("%08X", x[i]));
+            }
+        }
+        state.put("registers", registers);
+
+        // Broadcast state through WebSocket
+        webSocket.broadcastRegisterState(state);
+
         System.out.println("\nRegister Values:");
         System.out.println("PC: 0x" + String.format("%08X", pc));
 
@@ -395,5 +421,9 @@ public class RV32iCpu {
             return MemoryManager.TEXT_START + offset;
         }
         return virtualAddr;
+    }
+
+    public MemoryManager getMemoryManager() {
+        return memory;
     }
 }

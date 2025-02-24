@@ -18,7 +18,7 @@ public class App {
 
         try {
             // Load ELF file
-            elfLoader.loadElf("./app/src/main/resources/AssemblyProgram.elf");
+            elfLoader.loadElf("./app/src/main/resources/AssemblyUARTTestProgram.elf");
 
             // Set CPU's program counter to ELF entry point
             // cpu.setPC(elfLoader.getEntryPoint());

@@ -2,12 +2,20 @@ package cse311;
 
 public class MemoryManager {
     private SimpleMemory memory;
+    private Uart uart;
 
     // Memory layout constants
     public static final int TEXT_START = 0x10000;
     public static final int DATA_START = 0x20000;
     public static final int HEAP_START = 0x30000;
     public static final int STACK_START = 0x7FFFFFF0;
+
+    // UART Memory-Mapped Registers
+    public static final int UART_BASE = 0x10000000;
+    public static final int UART_TX_DATA = UART_BASE + 0x0; // Write data to transmit
+    public static final int UART_RX_DATA = UART_BASE + 0x4; // Read received data
+    public static final int UART_STATUS = UART_BASE + 0x8; // Status register
+    public static final int UART_CONTROL = UART_BASE + 0xC;
 
     private int heapPtr;
     private int stackPtr;
@@ -16,6 +24,7 @@ public class MemoryManager {
         this.memory = memory;
         this.heapPtr = HEAP_START;
         this.stackPtr = STACK_START;
+        this.uart = new Uart();
     }
 
     public void loadProgram(byte[] program) throws MemoryAccessException {
@@ -56,13 +65,27 @@ public class MemoryManager {
     public int readWord(int address) throws MemoryAccessException {
         validateAccess(address);
         validateAccess(address + 3);
+        if (address >= UART_BASE && address < UART_BASE + 0x1000) {
+            return uart.read(address);
+        }
         return memory.readWord(address);
     }
 
     public void writeByte(int address, byte value) throws MemoryAccessException {
-        validateAccess(address);
-        validateWriteAccess(address);
-        memory.writeByte(address, value);
+        try {
+            validateAccess(address);
+            validateWriteAccess(address);
+            memory.writeByte(address, value);
+        } catch (MemoryAccessException e) {
+            if (e.getMessage().startsWith("MMIO_ACCESS:")) {
+                // Handle UART access
+                if (address >= UART_BASE && address < UART_BASE + 0x1000) {
+                    uart.write(address, value);
+                    return;
+                }
+            }
+            throw e;
+        }
     }
 
     public void writeHalfWord(int address, short value) throws MemoryAccessException {
@@ -76,6 +99,10 @@ public class MemoryManager {
         validateAccess(address);
         validateAccess(address + 3);
         validateWriteAccess(address);
+        if (address >= UART_BASE && address < UART_BASE + 0x1000) {
+            uart.write(address, value);
+            return;
+        }
         memory.writeWord(address, value);
     }
 

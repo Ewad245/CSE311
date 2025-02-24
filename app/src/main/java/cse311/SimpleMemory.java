@@ -19,11 +19,34 @@ class SimpleMemory {
         memory = new byte[MEMORY_SIZE];
     }
 
+    // Add MMIO ranges
+    private static final int MMIO_START = 0x10000000;
+    private static final int MMIO_END = 0x10001000;
+
     public byte readByte(int address) throws MemoryAccessException {
+        // Check if address is in MMIO range
+        if (address >= MMIO_START && address < MMIO_END) {
+            // Let MemoryManager handle MMIO
+            throw new MemoryAccessException("MMIO_ACCESS:" + address);
+        }
+        
         if (address < 0 || address >= MEMORY_SIZE) {
             throw new MemoryAccessException("Memory access out of bounds: " + address);
         }
         return memory[address];
+    }
+
+    public void writeByte(int address, byte value) throws MemoryAccessException {
+        // Check if address is in MMIO range
+        if (address >= MMIO_START && address < MMIO_END) {
+            // Let MemoryManager handle MMIO
+            throw new MemoryAccessException("MMIO_ACCESS:" + address);
+        }
+
+        if (address < 0 || address >= MEMORY_SIZE) {
+            throw new MemoryAccessException("Memory access out of bounds: " + address);
+        }
+        memory[address] = value;
     }
 
     public short readHalfWord(int address) throws MemoryAccessException {
@@ -42,13 +65,6 @@ class SimpleMemory {
                 (memory[address + 2] & 0xFF) << 16 |
                 (memory[address + 1] & 0xFF) << 8 |
                 (memory[address] & 0xFF);
-    }
-
-    public void writeByte(int address, byte value) throws MemoryAccessException {
-        if (address < 0 || address >= MEMORY_SIZE) {
-            throw new MemoryAccessException("Memory access out of bounds: " + address);
-        }
-        memory[address] = value;
     }
 
     public void writeHalfWord(int address, short value) throws MemoryAccessException {

@@ -378,6 +378,12 @@ public class RV32iCpu {
     }
 
     private int mapAddress(int virtualAddr) {
+        // Handle UART addresses
+        if (virtualAddr >= MemoryManager.UART_BASE &&
+                virtualAddr < MemoryManager.UART_BASE + 0x1000) {
+            return virtualAddr;
+        }
+
         // Handle addresses in 0x80000000+ range
         if (virtualAddr < 0 || virtualAddr >= 0x80000000) {
             // Convert to unsigned using long to handle overflow

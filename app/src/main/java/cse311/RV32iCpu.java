@@ -396,4 +396,30 @@ public class RV32iCpu {
         }
         return virtualAddr;
     }
+
+    // Test-purpose only methods
+    public void setRegister(int index, int value) {
+        if (index >= 0 && index < x.length) {
+            x[index] = value;
+        }
+    }
+
+    public int getRegister(int index) {
+        if (index >= 0 && index < x.length) {
+            return x[index];
+        }
+        return 0;
+    }
+
+    public int getPc() {
+        return pc;
+    }
+
+    public void executeTest(InstructionDecoded inst) {
+        execute(inst);
+    }
+
+    public int mapAddressTest(int i) {
+        return mapAddress(i);
+    }
 }

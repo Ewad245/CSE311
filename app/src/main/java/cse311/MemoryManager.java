@@ -6,9 +6,10 @@ public class MemoryManager {
 
     // Memory layout constants
     public static final int TEXT_START = 0x10000;
-    public static final int DATA_START = 0x20000;
-    public static final int HEAP_START = 0x30000;
-    public static final int STACK_START = 0x7FFFFFF0;
+    public static final int RODATA_START = 0x1010000;
+    public static final int DATA_START = 0x2010000;
+    public static final int HEAP_START = 0x3010000;
+    public static final int STACK_START = 0x7C00000;
 
     // UART Memory-Mapped Registers
     public static final int UART_BASE = 0x10000000;
@@ -52,43 +53,49 @@ public class MemoryManager {
 
     // Memory access methods
     public byte readByte(int address) throws MemoryAccessException {
+        if (address >= UART_BASE && address < UART_BASE + 0x1000) {
+
+            return (byte) uart.read(address);
+        }
         validateAccess(address);
         return memory.readByte(address);
     }
 
     public short readHalfWord(int address) throws MemoryAccessException {
+        if (address >= UART_BASE && address < UART_BASE + 0x1000) {
+
+            return (short) uart.read(address);
+        }
         validateAccess(address);
         validateAccess(address + 1);
         return memory.readHalfWord(address);
     }
 
     public int readWord(int address) throws MemoryAccessException {
+        if (address >= UART_BASE && address < UART_BASE + 0x1000) {
+            return (int) uart.read(address);
+        }
         validateAccess(address);
         validateAccess(address + 3);
-        if (address >= UART_BASE && address < UART_BASE + 0x1000) {
-            return uart.read(address);
-        }
         return memory.readWord(address);
     }
 
     public void writeByte(int address, byte value) throws MemoryAccessException {
-        try {
-            validateAccess(address);
-            validateWriteAccess(address);
-            memory.writeByte(address, value);
-        } catch (MemoryAccessException e) {
-            if (e.getMessage().startsWith("MMIO_ACCESS:")) {
-                // Handle UART access
-                if (address >= UART_BASE && address < UART_BASE + 0x1000) {
-                    uart.write(address, value);
-                    return;
-                }
-            }
-            throw e;
+        if (address >= UART_BASE && address < UART_BASE + 0x1000) {
+            uart.write(address, value);
+            return;
         }
+        validateAccess(address);
+        validateWriteAccess(address);
+        memory.writeByte(address, value);
     }
 
     public void writeHalfWord(int address, short value) throws MemoryAccessException {
+        if (address >= UART_BASE && address < UART_BASE + 0x1000) {
+
+            uart.write(address, value);
+            return;
+        }
         validateAccess(address);
         validateAccess(address + 1);
         validateWriteAccess(address);
@@ -96,13 +103,14 @@ public class MemoryManager {
     }
 
     public void writeWord(int address, int value) throws MemoryAccessException {
-        validateAccess(address);
-        validateAccess(address + 3);
-        validateWriteAccess(address);
         if (address >= UART_BASE && address < UART_BASE + 0x1000) {
+
             uart.write(address, value);
             return;
         }
+        validateAccess(address);
+        validateAccess(address + 3);
+        // validateWriteAccess(address);
         memory.writeWord(address, value);
     }
 
@@ -153,8 +161,8 @@ public class MemoryManager {
     }
 
     private void validateWriteAccess(int address) throws MemoryAccessException {
-        if (address >= TEXT_START && address < DATA_START) {
-            throw new MemoryAccessException("Cannot write to text segment: " +
+        if (address >= (DATA_START + 0x1000000)) {
+            throw new MemoryAccessException("Cannot write to data segment: " +
                     String.format("0x%08X", address));
         }
     }
@@ -180,5 +188,9 @@ public class MemoryManager {
 
     public byte[] getByteMemory() {
         return memory.getMemory();
+    }
+
+    public void getInput(String data) {
+        uart.receiveDatas(data.getBytes());
     }
 }

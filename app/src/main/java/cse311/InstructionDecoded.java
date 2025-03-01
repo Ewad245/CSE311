@@ -101,4 +101,11 @@ public class InstructionDecoded {
         this.imm_j = imm_j;
     }
 
+    @Override
+    public String toString() {
+        return "InstructionDecoded [opcode=" + opcode + ", rd=" + rd + ", rs1=" + rs1 + ", rs2=" + rs2 + ", func3="
+                + func3 + ", func7=" + func7 + ", imm_i=" + imm_i + ", imm_s=" + imm_s + ", imm_b=" + imm_b + ", imm_u="
+                + imm_u + ", imm_j=" + imm_j + "]";
+    }
+
 }

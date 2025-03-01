@@ -11,14 +11,14 @@ public class App {
     }
 
     public static void main(String[] args) {
-        SimpleMemory memory = new SimpleMemory(8 * 1024 * 1024);
+        SimpleMemory memory = new SimpleMemory(128 * 1024 * 1024);
         MemoryManager memoryManager = new MemoryManager(memory);
         RV32iCpu cpu = new RV32iCpu(memoryManager);
         ElfLoader elfLoader = new ElfLoader(memoryManager);
 
         try {
             // Load ELF file
-            elfLoader.loadElf("./app/src/main/resources/AssemblyUARTTestProgram.elf");
+            elfLoader.loadElf("./app/src/main/resources/program.elf");
 
             // Set CPU's program counter to ELF entry point
             // cpu.setPC(elfLoader.getEntryPoint());

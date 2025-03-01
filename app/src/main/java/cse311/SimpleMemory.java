@@ -4,7 +4,7 @@ import java.util.Arrays;
 
 class SimpleMemory {
     private byte[] memory;
-    private int MEMORY_SIZE = 1024; // 1KB of memory
+    private int MEMORY_SIZE = 128 * 1024 * 1024; // 1KB of memory
 
     // Memory alignment constants
     private static final int HALF_WORD_ALIGN = 2;
@@ -29,7 +29,7 @@ class SimpleMemory {
             // Let MemoryManager handle MMIO
             throw new MemoryAccessException("MMIO_ACCESS:" + address);
         }
-        
+
         if (address < 0 || address >= MEMORY_SIZE) {
             throw new MemoryAccessException("Memory access out of bounds: " + address);
         }

@@ -1,21 +1,26 @@
 package cse311;
 
+import java.util.Scanner;
+
 public class RV32iCpu {
 
     private int[] x = new int[32];
     private int lastPC = -1;
+    private int lastPCBranch = -1;
     private int loopCount = 0;
     private int pc = 0;
     // private int[] instruction;
     private static final int INSTRUCTION_SIZE = 4; // 32-bit instructions
 
     private MemoryManager memory;
+    private Scanner reader;
     private Thread cpuThread;
     private boolean running = false;
     private static final int LOOP_THRESHOLD = 1000; // Maximum times to execute same instruction
 
     public RV32iCpu(MemoryManager memory) {
         this.memory = memory;
+        reader = new Scanner(System.in);
     }
 
     public void setProgramCounterEntryPoint(int entryPoint) {
@@ -28,6 +33,7 @@ public class RV32iCpu {
             public void run() {
                 while (RV32iCpu.this.running) {
                     try {
+                        // find13And12(memory.getByteMemory());
                         fetchExecuteCycle();
                     } catch (Exception e) {
                         // TODO Auto-generated catch block
@@ -58,6 +64,7 @@ public class RV32iCpu {
         int instructionFetched = fetch();
         InstructionDecoded instructionDecoded = decode(instructionFetched);
         execute(instructionDecoded); // Viet them update cho pc, cpu sau nay
+        System.out.println(instructionDecoded.toString());
         displayRegisters();
     }
 
@@ -239,6 +246,12 @@ public class RV32iCpu {
             // Load instructions
             case 0b0000011: // LOAD
                 int address = mapAddress(x[rs1] + imm_i);
+                if (!checkUARTAddress(address)) {
+                    int temp = address + MemoryManager.RODATA_START;
+                    if (temp < MemoryManager.DATA_START) {
+                        address = MemoryManager.DATA_START + address;
+                    }
+                }
                 try {
                     switch (func3) {
                         case 0b000: // LB
@@ -266,6 +279,11 @@ public class RV32iCpu {
             // Store instructions
             case 0b0100011: // STORE
                 address = mapAddress(x[rs1] + imm_s);
+                if (!checkUARTAddress(address)) {
+                    if (address + MemoryManager.DATA_START < MemoryManager.HEAP_START) {
+                        address = MemoryManager.DATA_START + address;
+                    }
+                }
                 try {
                     switch (func3) {
                         case 0b000: // SB
@@ -309,6 +327,20 @@ public class RV32iCpu {
                 if (takeBranch) {
                     pc += imm_b - INSTRUCTION_SIZE; // Subtract INSTRUCTION_SIZE because pc was already incremented in
                                                     // fetch
+                    if (lastPCBranch == -1) {
+                        lastPCBranch = pc;
+                    } else if (pc == lastPCBranch) {
+                        loopCount++;
+                    } else {
+                        loopCount = 0;
+                        lastPCBranch = -1;
+                    }
+                    if (loopCount > 20) {
+                        loopCount = 0;
+                        lastPCBranch = -1;
+                        System.out.println("Getting input");
+                        memory.getInput(reader.nextLine());
+                    }
                 }
                 break;
 
@@ -323,7 +355,9 @@ public class RV32iCpu {
             case 0b1100111: // JALR
                 int temp = pc;
                 pc = (x[rs1] + imm_i) & ~1;
-                x[rd] = temp;
+                if (rd != 0) {
+                    x[rd] = temp;
+                }
                 break;
 
             // LUI and AUIPC
@@ -379,13 +413,12 @@ public class RV32iCpu {
 
     private int mapAddress(int virtualAddr) {
         // Handle UART addresses
-        if (virtualAddr >= MemoryManager.UART_BASE &&
-                virtualAddr < MemoryManager.UART_BASE + 0x1000) {
+        if (checkUARTAddress(virtualAddr)) {
             return virtualAddr;
         }
 
         // Handle addresses in 0x80000000+ range
-        if (virtualAddr < 0 || virtualAddr >= 0x80000000) {
+        if (virtualAddr < 0 || virtualAddr >= 0x80000000L) {
             // Convert to unsigned using long to handle overflow
             long unsignedAddr = virtualAddr & 0xFFFFFFFFL;
 
@@ -393,12 +426,16 @@ public class RV32iCpu {
             int offset = (int) (unsignedAddr - 0x80000000L);
 
             // Map data accesses to data segment instead of text segment
-            if (offset >= 0x1000) { // If offset is beyond first 4KB
-                return MemoryManager.DATA_START + (offset - 0x1000);
-            }
+
+            /*
+             * if (offset >= 0x100000) { // If offset is beyond first 4KB
+             * return MemoryManager.DATA_START + (offset - 0x100000);
+             * }
+             */
 
             // Map first 4KB to text segment (for instruction fetch)
-            return MemoryManager.TEXT_START + offset;
+            // return MemoryManager.TEXT_START + offset;
+            return offset;
         }
         return virtualAddr;
     }
@@ -427,5 +464,25 @@ public class RV32iCpu {
 
     public int mapAddressTest(int i) {
         return mapAddress(i);
+    }
+
+    public void find13And12(byte[] arr) {
+        for (int i = 0; i < arr.length; i++) {
+            if (arr[i] == 13 || arr[i] == 12) {
+                if (arr[i] == 13) {
+                    System.out.println("Found 13 at index " + i);
+                } else {
+                    System.out.println("Found 12 at index " + i);
+                }
+            }
+        }
+    }
+
+    public boolean checkUARTAddress(int virtualAddr) {
+        if (virtualAddr >= MemoryManager.UART_BASE &&
+                virtualAddr < MemoryManager.UART_BASE + 0x1000) {
+            return true;
+        }
+        return false;
     }
 }

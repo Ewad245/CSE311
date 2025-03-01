@@ -9,20 +9,20 @@ import java.nio.file.Paths;
 public class ElfLoader {
     private byte[] elfData;
     private MemoryManager memory;
-    
+
     // ELF Header Constants
-    private static final byte[] ELF_MAGIC = {0x7f, 0x45, 0x4c, 0x46}; // "\177ELF"
+    private static final byte[] ELF_MAGIC = { 0x7f, 0x45, 0x4c, 0x46 }; // "\177ELF"
     private static final int EI_CLASS_64 = 2;
     private static final int EI_DATA_LE = 1;
     private static final int EM_RISCV = 243;
-    
+
     // Program Header Types
     private static final int PT_LOAD = 1;
-    
+
     // Section Header Types
     private static final int SHT_PROGBITS = 1;
     private static final int SHT_NOBITS = 8;
-    
+
     // Program Header Flags
     private static final int PF_X = 1;
     private static final int PF_W = 2;
@@ -34,11 +34,11 @@ public class ElfLoader {
 
     public void loadElf(String filename) throws IOException, ElfException {
         elfData = Files.readAllBytes(Paths.get(filename));
-        
+
         if (!validateElfHeader()) {
             throw new ElfException("Invalid ELF file");
         }
-        
+
         loadProgramSegments();
     }
 
@@ -76,7 +76,7 @@ public class ElfLoader {
 
     private void loadProgramSegments() throws ElfException {
         ByteBuffer buffer = ByteBuffer.wrap(elfData).order(ByteOrder.LITTLE_ENDIAN);
-        
+
         // Get program header offset and number of entries
         buffer.position(28);
         int programHeaderOffset = buffer.getInt();
@@ -110,14 +110,14 @@ public class ElfLoader {
         }
     }
 
-    private void loadSegment(int fileOffset, int virtualAddr, int sizeInFile, 
-                           int sizeInMem, int flags) throws MemoryAccessException {
+    private void loadSegment(int fileOffset, int virtualAddr, int sizeInFile,
+            int sizeInMem, int flags) throws MemoryAccessException {
         int mappedAddr = mapAddress(virtualAddr);
-        
+
         if (sizeInFile > 0) {
             byte[] segmentData = new byte[sizeInFile];
             System.arraycopy(elfData, fileOffset, segmentData, 0, sizeInFile);
-            
+
             // Use writeByteToText for initial program loading
             for (int i = 0; i < sizeInFile; i++) {
                 memory.writeByteToText(mappedAddr + i, segmentData[i]);
@@ -131,11 +131,17 @@ public class ElfLoader {
     }
 
     private int mapAddress(int virtualAddr) {
+        // Special handling for UART addresses
+        if (virtualAddr >= MemoryManager.UART_BASE &&
+                virtualAddr < MemoryManager.UART_BASE + 0x1000) {
+            return virtualAddr; // Don't remap UART addresses
+        }
+
         // Convert negative addresses (like 0x80000000) to our memory layout
         if (virtualAddr < 0) {
             // Calculate offset from 0x80000000
-            long unsignedAddr = virtualAddr & 0xFFFFFFFFL;  // Convert to unsigned long
-            int offset = (int)(unsignedAddr - 0x80000000L); // Calculate offset
+            long unsignedAddr = virtualAddr & 0xFFFFFFFFL; // Convert to unsigned long
+            int offset = (int) (unsignedAddr - 0x80000000L); // Calculate offset
             return MemoryManager.TEXT_START + offset;
         }
         return virtualAddr;

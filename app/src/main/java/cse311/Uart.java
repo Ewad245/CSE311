@@ -2,7 +2,7 @@ package cse311;
 
 public class Uart {
     private static final int TX_READY = 1;
-    private static final int RX_READY = 2;
+    private static final int RX_READY = 0;
 
     private int status;
     private int control;
@@ -12,7 +12,7 @@ public class Uart {
     public Uart() {
         status = TX_READY; // Always ready to transmit
         control = 0;
-        rxBuffer = new byte[1024];
+        rxBuffer = new byte[2048];
         rxIndex = 0;
     }
 
@@ -30,7 +30,8 @@ public class Uart {
                 }
                 return 0;
             case 0x8: // Status
-                return status;
+                // Always return TX ready (bit 5) and sometimes RX ready (bit 0)
+                return status | TX_READY | 0x20; // 0x20 is bit 5 (TX ready)
             case 0xC: // Control
                 return control;
             default:
@@ -54,6 +55,12 @@ public class Uart {
         if (rxIndex < rxBuffer.length) {
             rxBuffer[rxIndex++] = data;
             status |= RX_READY;
+        }
+    }
+
+    public synchronized void receiveDatas(byte[] data) {
+        for (int i = 0; i < data.length; i++) {
+            receiveData(data[i]);
         }
     }
 }

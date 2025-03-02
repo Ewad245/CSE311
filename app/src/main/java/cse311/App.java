@@ -4,6 +4,7 @@
 package cse311;
 
 import java.io.IOException;
+import java.io.PrintStream;
 
 public class App {
     public String getGreeting() {
@@ -18,19 +19,24 @@ public class App {
 
         try {
             // Load ELF file
-            elfLoader.loadElf("./app/src/main/resources/program.elf");
+            elfLoader.loadElf("./app/src/main/resources/Assembly(Sum)NewLinker.elf");
 
             // Set CPU's program counter to ELF entry point
             // cpu.setPC(elfLoader.getEntryPoint());
 
             // Start the CPU
             int entryPoint = elfLoader.getEntryPoint();
-            System.out.println("Entry Point: " + entryPoint);
+            PrintStream output = new PrintStream(System.out, false);
+            output.println("Entry Point: " + entryPoint);
+            // Optional: Print memory map for debugging
+            output.println(memoryManager.getMemoryMap());
+            output.flush();
+            output.close();
+
+            // Start the CPU
             cpu.setProgramCounterEntryPoint(entryPoint);
             cpu.turnOn();
 
-            // Optional: Print memory map for debugging
-            System.out.println(memoryManager.getMemoryMap());
             // Optional: Print CPU state after execution
             // System.out.println(cpu.getState());
 

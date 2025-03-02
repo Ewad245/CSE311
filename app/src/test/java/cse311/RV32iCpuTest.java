@@ -10,7 +10,7 @@ public class RV32iCpuTest {
 
     @BeforeEach
     void setUp() {
-        SimpleMemory simpleMemory = new SimpleMemory(8 * 1024 * 1024);
+        SimpleMemory simpleMemory = new SimpleMemory(128 * 1024 * 1024);
         memory = new MemoryManager(simpleMemory);
         cpu = new RV32iCpu(memory);
     }
@@ -79,16 +79,16 @@ public class RV32iCpuTest {
         inst.setRd(1);
         inst.setFunc3(0b010);
         inst.setRs1(2);
-        inst.setImm_i(4);
+        inst.setImm_i(0);
 
         // Use virtual address that maps directly to DATA_START
-        int virtualBaseAddr = 0x80021000; // Beyond first 4KB to map to data segment
-
-        // Set base address in register
-        cpu.setRegister(2, virtualBaseAddr);
+        int virtualBaseAddr = 0x82010000;
 
         // Calculate mapped physical address using CPU's mapping
-        int mappedAddr = cpu.mapAddressTest(virtualBaseAddr + 4);
+        int mappedAddr = cpu.mapAddressTest(virtualBaseAddr);
+
+        // Set base address in register
+        cpu.setRegister(2, mappedAddr);
 
         // Write test value to mapped physical address
         memory.writeWord(mappedAddr, 42);
@@ -112,17 +112,17 @@ public class RV32iCpuTest {
         inst.setRs2(1);
         inst.setFunc3(0b010);
         inst.setRs1(2);
-        inst.setImm_s(4);
+        inst.setImm_s(0);
 
-        // Use virtual address in data segment range (beyond first 4KB)
-        int virtualBaseAddr = 0x80021000; // Beyond first 4KB to map to data segment
+        // Use virtual address in data segment range
+        int virtualBaseAddr = 0x82010000;
 
         // Calculate mapped physical address using CPU's mapping
-        int mappedAddr = cpu.mapAddressTest(virtualBaseAddr + 4);
+        int mappedAddr = cpu.mapAddressTest(virtualBaseAddr);
 
         // Set registers
         cpu.setRegister(1, 42); // Value to store
-        cpu.setRegister(2, virtualBaseAddr); // Base address
+        cpu.setRegister(2, mappedAddr); // Base address
 
         // Debug output
         System.out.printf("Virtual base: 0x%08X\n", virtualBaseAddr);

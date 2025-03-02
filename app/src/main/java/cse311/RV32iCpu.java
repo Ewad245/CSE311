@@ -7,6 +7,7 @@ public class RV32iCpu {
     private int[] x = new int[32];
     private int lastPC = -1;
     private int lastPCBranch = -1;
+    private int loopCountBranch = 0;
     private int loopCount = 0;
     private int pc = 0;
     // private int[] instruction;
@@ -17,10 +18,11 @@ public class RV32iCpu {
     private Thread cpuThread;
     private boolean running = false;
     private static final int LOOP_THRESHOLD = 1000; // Maximum times to execute same instruction
+    private InputThread input;
 
     public RV32iCpu(MemoryManager memory) {
         this.memory = memory;
-        reader = new Scanner(System.in);
+        input = new InputThread();
     }
 
     public void setProgramCounterEntryPoint(int entryPoint) {
@@ -28,6 +30,7 @@ public class RV32iCpu {
     }
 
     public void turnOn() {
+        Runnable task1 = () -> input.getInput(memory);
         this.cpuThread = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -42,6 +45,7 @@ public class RV32iCpu {
                 }
             }
         });
+        new Thread(task1).start();
         this.running = true;
         this.cpuThread.start();
     }
@@ -64,8 +68,8 @@ public class RV32iCpu {
         int instructionFetched = fetch();
         InstructionDecoded instructionDecoded = decode(instructionFetched);
         execute(instructionDecoded); // Viet them update cho pc, cpu sau nay
-        System.out.println(instructionDecoded.toString());
-        displayRegisters();
+        // System.out.println(instructionDecoded.toString());
+        // displayRegisters();
     }
 
     private int fetch() throws MemoryAccessException {
@@ -250,6 +254,8 @@ public class RV32iCpu {
                     int temp = address + MemoryManager.RODATA_START;
                     if (temp < MemoryManager.DATA_START) {
                         address = MemoryManager.DATA_START + address;
+                    } else {
+                        address += MemoryManager.TEXT_START;
                     }
                 }
                 try {
@@ -327,20 +333,22 @@ public class RV32iCpu {
                 if (takeBranch) {
                     pc += imm_b - INSTRUCTION_SIZE; // Subtract INSTRUCTION_SIZE because pc was already incremented in
                                                     // fetch
-                    if (lastPCBranch == -1) {
-                        lastPCBranch = pc;
-                    } else if (pc == lastPCBranch) {
-                        loopCount++;
-                    } else {
-                        loopCount = 0;
-                        lastPCBranch = -1;
-                    }
-                    if (loopCount > 20) {
-                        loopCount = 0;
-                        lastPCBranch = -1;
-                        System.out.println("Getting input");
-                        memory.getInput(reader.nextLine());
-                    }
+                    /*
+                     * if (lastPCBranch == -1) {
+                     * lastPCBranch = pc;
+                     * } else if (pc == lastPCBranch) {
+                     * loopCountBranch++;
+                     * } else {
+                     * loopCountBranch = 0;
+                     * lastPCBranch = -1;
+                     * }
+                     * if (loopCountBranch > 20) {
+                     * loopCountBranch = 0;
+                     * lastPCBranch = -1;
+                     * System.out.println("Getting input");
+                     * memory.getInput(reader.nextLine());
+                     * }
+                     */
                 }
                 break;
 

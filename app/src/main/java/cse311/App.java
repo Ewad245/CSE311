@@ -19,7 +19,7 @@ public class App {
 
         try {
             // Load ELF file
-            elfLoader.loadElf("./app/src/main/resources/Assembly(Sum)NewLinker.elf");
+            elfLoader.loadElf("./app/src/main/resources/1741454834884_ELF.elf");
 
             // Set CPU's program counter to ELF entry point
             // cpu.setPC(elfLoader.getEntryPoint());
@@ -31,7 +31,6 @@ public class App {
             // Optional: Print memory map for debugging
             output.println(memoryManager.getMemoryMap());
             output.flush();
-            output.close();
 
             // Start the CPU
             cpu.setProgramCounterEntryPoint(entryPoint);

@@ -251,11 +251,14 @@ public class RV32iCpu {
             case 0b0000011: // LOAD
                 int address = mapAddress(x[rs1] + imm_i);
                 if (!checkUARTAddress(address)) {
-                    int temp = address + MemoryManager.RODATA_START;
-                    if (temp < MemoryManager.DATA_START) {
-                        address = MemoryManager.DATA_START + address;
-                    } else {
-                        address += MemoryManager.TEXT_START;
+                    ;// If address is in data segment
+                    if (address < MemoryManager.DATA_START) {
+                        int temp = address + MemoryManager.RODATA_START;
+                        if (temp < MemoryManager.DATA_START) {
+                            address = MemoryManager.DATA_START + address;
+                        } else {
+                            address += MemoryManager.TEXT_START;
+                        }
                     }
                 }
                 try {

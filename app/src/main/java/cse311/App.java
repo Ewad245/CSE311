@@ -19,7 +19,7 @@ public class App {
 
         try {
             // Load ELF file
-            elfLoader.loadElf("./app/src/main/resources/1741454834884_ELF.elf");
+            elfLoader.loadElf(args[0]);
 
             // Set CPU's program counter to ELF entry point
             // cpu.setPC(elfLoader.getEntryPoint());

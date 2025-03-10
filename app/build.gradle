@@ -38,6 +38,14 @@ application {
     mainClass = 'cse311.App'
 }
 
+jar {
+    manifest {
+        attributes(
+            'Main-Class': 'cse311.App'
+        )
+    }
+}
+
 tasks.named('test') {
     // Use JUnit Platform for unit tests.
     useJUnitPlatform()

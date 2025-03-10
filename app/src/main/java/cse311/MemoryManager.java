@@ -1,5 +1,10 @@
 package cse311;
 
+import java.io.IOException;
+import java.net.Socket;
+
+import com.corundumstudio.socketio.SocketIOClient;
+
 public class MemoryManager {
     private SimpleMemory memory;
     private Uart uart;
@@ -17,9 +22,18 @@ public class MemoryManager {
     public static final int UART_RX_DATA = UART_BASE + 0x4; // Read received data
     public static final int UART_STATUS = UART_BASE + 0x8; // Status register
     public static final int UART_CONTROL = UART_BASE + 0xC;
+    public SocketIOClient client;
 
     private int heapPtr;
     private int stackPtr;
+
+    public MemoryManager(SimpleMemory memory, SocketIOClient client) {
+        this.memory = memory;
+        this.heapPtr = HEAP_START;
+        this.stackPtr = STACK_START;
+        this.client = client;
+        this.uart = new Uart(this.client);
+    }
 
     public MemoryManager(SimpleMemory memory) {
         this.memory = memory;
@@ -82,7 +96,12 @@ public class MemoryManager {
 
     public void writeByte(int address, byte value) throws MemoryAccessException {
         if (address >= UART_BASE && address < UART_BASE + 0x1000) {
-            uart.write(address, value);
+            try {
+                uart.write(address, value);
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
             return;
         }
         validateAccess(address);
@@ -93,7 +112,12 @@ public class MemoryManager {
     public void writeHalfWord(int address, short value) throws MemoryAccessException {
         if (address >= UART_BASE && address < UART_BASE + 0x1000) {
 
-            uart.write(address, value);
+            try {
+                uart.write(address, value);
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
             return;
         }
         validateAccess(address);
@@ -105,7 +129,12 @@ public class MemoryManager {
     public void writeWord(int address, int value) throws MemoryAccessException {
         if (address >= UART_BASE && address < UART_BASE + 0x1000) {
 
-            uart.write(address, value);
+            try {
+                uart.write(address, value);
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
             return;
         }
         validateAccess(address);

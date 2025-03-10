@@ -1,6 +1,9 @@
 package cse311;
 
 import java.util.Scanner;
+import java.util.logging.MemoryHandler;
+
+import com.corundumstudio.socketio.SocketIOClient;
 
 public class RV32iCpu {
 
@@ -19,9 +22,16 @@ public class RV32iCpu {
     private boolean running = false;
     private static final int LOOP_THRESHOLD = 1000; // Maximum times to execute same instruction
     private InputThread input;
+    private SocketIOClient client;
 
     public RV32iCpu(MemoryManager memory) {
         this.memory = memory;
+        input = new InputThread();
+    }
+
+    public RV32iCpu(MemoryManager memory, SocketIOClient client) {
+        this.memory = memory;
+        this.client = client;
         input = new InputThread();
     }
 
@@ -30,7 +40,6 @@ public class RV32iCpu {
     }
 
     public void turnOn() {
-        Runnable task1 = () -> input.getInput(memory);
         this.cpuThread = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -45,9 +54,9 @@ public class RV32iCpu {
                 }
             }
         });
-        new Thread(task1).start();
         this.running = true;
         this.cpuThread.start();
+
     }
 
     private void fetchExecuteCycle() throws Exception {
@@ -251,11 +260,14 @@ public class RV32iCpu {
             case 0b0000011: // LOAD
                 int address = mapAddress(x[rs1] + imm_i);
                 if (!checkUARTAddress(address)) {
-                    int temp = address + MemoryManager.RODATA_START;
-                    if (temp < MemoryManager.DATA_START) {
-                        address = MemoryManager.DATA_START + address;
-                    } else {
-                        address += MemoryManager.TEXT_START;
+                    ;// If address is in data segment
+                    if (address < MemoryManager.DATA_START) {
+                        int temp = address + MemoryManager.RODATA_START;
+                        if (temp < MemoryManager.DATA_START) {
+                            address = MemoryManager.DATA_START + address;
+                        } else {
+                            address += MemoryManager.TEXT_START;
+                        }
                     }
                 }
                 try {
@@ -474,18 +486,6 @@ public class RV32iCpu {
         return mapAddress(i);
     }
 
-    public void find13And12(byte[] arr) {
-        for (int i = 0; i < arr.length; i++) {
-            if (arr[i] == 13 || arr[i] == 12) {
-                if (arr[i] == 13) {
-                    System.out.println("Found 13 at index " + i);
-                } else {
-                    System.out.println("Found 12 at index " + i);
-                }
-            }
-        }
-    }
-
     public boolean checkUARTAddress(int virtualAddr) {
         if (virtualAddr >= MemoryManager.UART_BASE &&
                 virtualAddr < MemoryManager.UART_BASE + 0x1000) {
@@ -493,4 +493,9 @@ public class RV32iCpu {
         }
         return false;
     }
+
+    public MemoryManager getMemoryManager() {
+        return memory;
+    }
+
 }

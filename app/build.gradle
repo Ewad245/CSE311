@@ -23,6 +23,7 @@ dependencies {
 
     // This dependency is used by the application.
     implementation libs.guava
+    implementation 'com.corundumstudio.socketio:netty-socketio:2.0.12'
 }
 
 // Apply a specific Java toolchain to ease working on different environments.

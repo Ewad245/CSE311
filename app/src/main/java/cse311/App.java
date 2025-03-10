@@ -12,38 +12,9 @@ public class App {
     }
 
     public static void main(String[] args) {
-        SimpleMemory memory = new SimpleMemory(128 * 1024 * 1024);
-        MemoryManager memoryManager = new MemoryManager(memory);
-        RV32iCpu cpu = new RV32iCpu(memoryManager);
-        ElfLoader elfLoader = new ElfLoader(memoryManager);
 
-        try {
-            // Load ELF file
-            elfLoader.loadElf("./app/src/main/resources/Assembly(Sum)NewLinker.elf");
-
-            // Set CPU's program counter to ELF entry point
-            // cpu.setPC(elfLoader.getEntryPoint());
-
-            // Start the CPU
-            int entryPoint = elfLoader.getEntryPoint();
-            PrintStream output = new PrintStream(System.out, false);
-            output.println("Entry Point: " + entryPoint);
-            // Optional: Print memory map for debugging
-            output.println(memoryManager.getMemoryMap());
-            output.flush();
-            output.close();
-
-            // Start the CPU
-            cpu.setProgramCounterEntryPoint(entryPoint);
-            cpu.turnOn();
-
-            // Optional: Print CPU state after execution
-            // System.out.println(cpu.getState());
-
-        } catch (Exception e) {
-            System.err.println("Error running program: " + e.getMessage());
-            e.printStackTrace();
-        }
+        WebSocketServer server = new WebSocketServer();
+        server.start();
 
     }
 }

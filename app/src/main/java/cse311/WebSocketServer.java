@@ -38,6 +38,7 @@ public class WebSocketServer {
         Configuration config = new Configuration();
         config.setHostname("0.0.0.0"); // Using localhost instead of hardcoded IP
         config.setPort(PORT);
+        config.setOrigin("*");
 
         server = new SocketIOServer(config);
 

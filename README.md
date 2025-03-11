@@ -1,6 +1,6 @@
-# RV32I Emulator in Java
+# RV32I Simulator in Java
 
-This project is an **RV32I CPU emulator** written in **Java**, designed to execute **bare-metal ELF files** targeting the **RISC-V RV32I** architecture. It features memory-mapped I/O (MMIO) for UART communication, memory protection, and plans for extended support such as exception handling, peripheral simulation, and debugging capabilities.
+This project is an **RV32I CPU simulator** written in **Java**, designed to execute **bare-metal ELF files** targeting the **RISC-V RV32I** architecture. It features memory-mapped I/O (MMIO) for UART communication, memory protection, and plans for extended support such as exception handling, peripheral simulation, and debugging capabilities.
 
 ## Features
 - **RV32I Instruction Set**: Supports base integer instructions.

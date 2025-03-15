@@ -3,9 +3,6 @@
  */
 package cse311;
 
-import java.io.IOException;
-import java.io.PrintStream;
-
 public class App {
     public String getGreeting() {
         return "Hello World!";

@@ -1,5 +1,7 @@
 package cse311;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Scanner;
 import java.util.logging.MemoryHandler;
 
@@ -78,7 +80,7 @@ public class RV32iCpu {
         InstructionDecoded instructionDecoded = decode(instructionFetched);
         execute(instructionDecoded); // Viet them update cho pc, cpu sau nay
         // System.out.println(instructionDecoded.toString());
-        // displayRegisters();
+        displayRegisters();
     }
 
     private int fetch() throws MemoryAccessException {
@@ -420,8 +422,8 @@ public class RV32iCpu {
                 "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"
         };
 
-        System.out.println("\nRegister Values:");
-        System.out.println("PC: 0x" + String.format("%08X", pc));
+        // System.out.println("\nRegister Values:");
+        // System.out.println("PC: 0x" + String.format("%08X", pc));
 
         for (int i = 0; i < x.length; i++) {
             if (x[i] != 0) { // Only show non-zero registers to reduce clutter
@@ -429,6 +431,24 @@ public class RV32iCpu {
             }
         }
         System.out.println("------------------------");
+
+        // Send register values to the client if a client is connected
+        if (client != null) {
+            // Create a map to hold register values
+            Map<String, Integer> registerData = new HashMap<>();
+
+            // Add all registers to the map (including zero registers)
+            for (int i = 0; i < x.length; i++) {
+                registerData.put("x" + i, x[i]);
+            }
+
+            // Add PC to the register data
+            registerData.put("pc", pc);
+
+            // Send the register data to the client
+            System.out.println("Sending register data to client");
+            client.sendEvent("register_update", registerData);
+        }
     }
 
     private int mapAddress(int virtualAddr) {

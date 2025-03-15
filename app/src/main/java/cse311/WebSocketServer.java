@@ -38,6 +38,8 @@ public class WebSocketServer {
         Configuration config = new Configuration();
         config.setHostname("0.0.0.0"); // Using localhost instead of hardcoded IP
         config.setPort(PORT);
+        config.setEnableCors(true);
+        // Set the origin to allow requests from any host
         config.setOrigin("*");
 
         server = new SocketIOServer(config);
@@ -54,7 +56,7 @@ public class WebSocketServer {
             memory = new SimpleMemory(128 * 1024 * 1024);
             memoryManager = new MemoryManager(memory, client);
             elfLoader = new ElfLoader(memoryManager);
-            userCPUs.put(sessionId, new RV32iCpu(memoryManager)); // Assign a unique CPU instance
+            userCPUs.put(sessionId, new RV32iCpu(memoryManager, client)); // Assign a unique CPU instance
             client.sendEvent("connected");
             System.out.println("User connected: " + sessionId);
         });
@@ -63,7 +65,6 @@ public class WebSocketServer {
             System.out.println("Received ELF file: ");
 
             // Decode ELF binary data
-            System.out.println(data);
             byte[] elfBinary = Base64.getDecoder().decode(data);
 
             String fileName = "ELF.elf";
@@ -116,7 +117,6 @@ public class WebSocketServer {
 
     private String saveElfFile(String fileName, byte[] data) {
         String timestampedName = System.currentTimeMillis() + "_" + fileName;
-        System.out.println(timestampedName);
         try (BufferedOutputStream bos = new BufferedOutputStream(
                 new FileOutputStream(ELF_STORAGE_DIR + timestampedName))) {
             bos.write(data);

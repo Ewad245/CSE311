@@ -48,7 +48,7 @@ To ensure everything works correctly, run:
 - View UART output from memory-mapped I/O.
 
 ## Roadmap
-- [ ] Implement web version. (currently working on it using SocketIO and NextJS client)
+- [X] Implement web version. (currently working on it using SocketIO and NextJS client) (In "Support SocketIO" Branch)
 - [ ] Implement RV32M (Multiplication & Division).
 - [ ] Add CSR (Control and Status Registers).
 - [ ] Improve ELF loading and debugging support.

@@ -7,8 +7,8 @@ public class RV32iComputer {
     private MemoryManager memory;
 
     public RV32iComputer(int memSize) {
-        memory = new MemoryManager(new SimpleMemory(memSize));
-        this.cpu = new RV32iCpu(memory);
+        // memory = new MemoryManager(new SimpleMemory(memSize));
+        // this.cpu = new RV32iCpu(memory);
 
     }
 

@@ -73,7 +73,7 @@ public class RV32iCpuTest {
     // Load instruction tests
     @Test
     void testLw() throws MemoryAccessException {
-        // LW x1, 4(x2)
+        // LW x1, 0(x2)
         InstructionDecoded inst = new InstructionDecoded();
         inst.setOpcode(0b0000011);
         inst.setRd(1);
@@ -81,32 +81,31 @@ public class RV32iCpuTest {
         inst.setRs1(2);
         inst.setImm_i(0);
 
-        // Use virtual address that maps directly to DATA_START
-        int virtualBaseAddr = 0x82010000;
+        // Use a virtual address that will be correctly mapped
+        int virtualAddr = 0;
+        
+        // Set the virtual address in register
+        cpu.setRegister(2, virtualAddr);
 
-        // Calculate mapped physical address using CPU's mapping
-        int mappedAddr = cpu.mapAddressTest(virtualBaseAddr);
+        // Calculate the physical address that will be used after mapping
+        // The CPU's execute method for LW will map the virtual address to a physical address
+        // by adding MemoryManager.DATA_START
+        int physicalAddr = MemoryManager.DATA_START + virtualAddr;
+        
+        // Write test value to the physical address
+        memory.writeWord(physicalAddr, 42);
 
-        // Set base address in register
-        cpu.setRegister(2, mappedAddr);
-
-        // Write test value to mapped physical address
-        memory.writeWord(mappedAddr, 42);
-
-        // Debug output
-        System.out.printf("Virtual base: 0x%08X\n", virtualBaseAddr);
-        System.out.printf("Virtual address (base+4): 0x%08X\n", virtualBaseAddr + 4);
-        System.out.printf("Mapped physical address: 0x%08X\n", mappedAddr);
-        System.out.printf("Value at physical address: %d\n", memory.readWord(mappedAddr));
-
+        // Execute the instruction
         cpu.executeTest(inst);
+        
+        // Verify the value was loaded into register x1
         assertEquals(42, cpu.getRegister(1), "LW failed");
     }
 
     // Store instruction tests
     @Test
     void testSw() throws MemoryAccessException {
-        // SW x1, 4(x2)
+        // SW x1, 0(x2)
         InstructionDecoded inst = new InstructionDecoded();
         inst.setOpcode(0b0100011);
         inst.setRs2(1);
@@ -114,26 +113,23 @@ public class RV32iCpuTest {
         inst.setRs1(2);
         inst.setImm_s(0);
 
-        // Use virtual address in data segment range
-        int virtualBaseAddr = 0x82010000;
-
-        // Calculate mapped physical address using CPU's mapping
-        int mappedAddr = cpu.mapAddressTest(virtualBaseAddr);
-
+        // Use a virtual address that will be correctly mapped
+        int virtualAddr = 100;
+        
+        // Calculate the physical address that will be used after mapping
+        // The CPU's execute method for SW will map the virtual address to a physical address
+        // by adding MemoryManager.DATA_START
+        int physicalAddr = MemoryManager.DATA_START + virtualAddr;
+        
         // Set registers
         cpu.setRegister(1, 42); // Value to store
-        cpu.setRegister(2, mappedAddr); // Base address
+        cpu.setRegister(2, virtualAddr); // Virtual base address
 
-        // Debug output
-        System.out.printf("Virtual base: 0x%08X\n", virtualBaseAddr);
-        System.out.printf("Virtual address (base+4): 0x%08X\n", virtualBaseAddr + 4);
-        System.out.printf("Mapped physical address: 0x%08X\n", mappedAddr);
-
+        // Execute the instruction
         cpu.executeTest(inst);
 
-        // Verify stored value at mapped address
-        int storedValue = memory.readWord(mappedAddr);
-        System.out.printf("Value at physical address: %d\n", storedValue);
+        // Verify stored value at physical address
+        int storedValue = memory.readWord(physicalAddr);
         assertEquals(42, storedValue, "SW failed");
     }
 

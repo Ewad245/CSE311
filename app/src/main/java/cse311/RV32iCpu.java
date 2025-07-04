@@ -1,24 +1,28 @@
 package cse311;
 
+import java.nio.ByteBuffer;
 import java.util.Scanner;
 
 public class RV32iCpu {
 
-    private int[] x = new int[32];
+    private final int[] x = new int[32];
     private int lastPC = -1;
-    private int lastPCBranch = -1;
-    private int loopCountBranch = 0;
     private int loopCount = 0;
     private int pc = 0;
-    // private int[] instruction;
     private static final int INSTRUCTION_SIZE = 4; // 32-bit instructions
 
-    private MemoryManager memory;
-    private Scanner reader;
+    private final MemoryManager memory;
     private Thread cpuThread;
-    private boolean running = false;
+    private volatile boolean running = false;
     private static final int LOOP_THRESHOLD = 1000; // Maximum times to execute same instruction
-    private InputThread input;
+    private final InputThread input;
+    
+    // Cache for frequently accessed memory
+    private static final int CACHE_SIZE = 1024;
+    private final int[] instructionCache = new int[CACHE_SIZE];
+    private final int[] cacheAddresses = new int[CACHE_SIZE];
+    private final boolean[] cacheValid = new boolean[CACHE_SIZE];
+
 
     public RV32iCpu(MemoryManager memory) {
         this.memory = memory;
@@ -30,6 +34,14 @@ public class RV32iCpu {
     }
 
     public void turnOn() {
+        if (running) {
+            System.out.println("CPU is already running");
+            return;
+        }
+        
+        // Reset cache before starting
+        clearCache();
+        
         Runnable task1 = () -> input.getInput(memory);
         this.cpuThread = new Thread(new Runnable() {
             @Override
@@ -45,9 +57,49 @@ public class RV32iCpu {
                 }
             }
         });
+        
+        // Set thread as daemon to prevent it from blocking JVM shutdown
+        this.cpuThread.setDaemon(true);
         new Thread(task1).start();
         this.running = true;
         this.cpuThread.start();
+    }
+    
+    private void clearCache() {
+        // Clear instruction cache
+        for (int i = 0; i < CACHE_SIZE; i++) {
+            cacheValid[i] = false;
+        }
+        
+        // Clear memory cache
+        memory.clearCache();
+    }
+    
+    public void stop() {
+        running = false;
+        
+        // Stop and close the input thread
+        if (input != null) {
+            input.close();
+        }
+        
+        // Wait for CPU thread to finish
+        try {
+            if (cpuThread != null && cpuThread.isAlive()) {
+                cpuThread.join(1000); // Wait up to 1 second
+                
+                // If thread is still running, interrupt it
+                if (cpuThread.isAlive()) {
+                    cpuThread.interrupt();
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("Interrupted while stopping CPU: " + e.getMessage());
+        }
+        
+        // Clear caches and reset state
+        clearCache();
     }
 
     private void fetchExecuteCycle() throws Exception {
@@ -73,65 +125,72 @@ public class RV32iCpu {
     }
 
     private int fetch() throws MemoryAccessException {
-        // Read 32-bit instruction from memory at PC
-        int instruction = 0;
-
-        // Read 4 bytes and combine them
-        try {
-            byte byte0 = memory.readByte(pc);
-            byte byte1 = memory.readByte(pc + 1);
-            byte byte2 = memory.readByte(pc + 2);
-            byte byte3 = memory.readByte(pc + 3);
-
-            // Combine bytes into 32-bit instruction
-            instruction = (byte3 & 0xFF) << 24
-                    | (byte2 & 0xFF) << 16
-                    | (byte1 & 0xFF) << 8
-                    | (byte0 & 0xFF);
-
-            // Increment PC by instruction size (4 bytes)
+        // Check if instruction is in cache
+        int cacheIndex = (pc / INSTRUCTION_SIZE) % CACHE_SIZE;
+        if (cacheValid[cacheIndex] && cacheAddresses[cacheIndex] == pc) {
+            // Cache hit
+            int instruction = instructionCache[cacheIndex];
             pc += INSTRUCTION_SIZE;
+            return instruction;
+        }
+        
+        // Cache miss - read from memory
+        int instruction = 0;
+        try {
+                // Fallback to byte-by-byte reading for unaligned access
+                byte byte0 = memory.readByte(pc);
+                byte byte1 = memory.readByte(pc + 1);
+                byte byte2 = memory.readByte(pc + 2);
+                byte byte3 = memory.readByte(pc + 3);
+                
+                instruction = (byte3 & 0xFF) << 24
+                        | (byte2 & 0xFF) << 16
+                        | (byte1 & 0xFF) << 8
+                        | (byte0 & 0xFF);
 
+            
+            // Update cache
+            instructionCache[cacheIndex] = instruction;
+            cacheAddresses[cacheIndex] = pc;
+            cacheValid[cacheIndex] = true;
+            
+            // Increment PC by instruction size
+            pc += INSTRUCTION_SIZE;
+            
         } catch (Exception e) {
             throw new MemoryAccessException("Failed to fetch instruction at PC: " + pc);
         }
-
+        
         return instruction;
     }
 
+    // Reusable instruction decoder instance to avoid object creation
+    private final InstructionDecoded decodedInstruction = new InstructionDecoded();
+    
     private InstructionDecoded decode(int instructionInt) {
-        // Combine the bytes into a 32-bit instruction
-        /*
-         * int instructionInt = (instruction[3] & 0xFF) << 24
-         * | (instruction[2] & 0xFF) << 16
-         * | (instruction[1] & 0xFF) << 8
-         * | (instruction[0] & 0xFF);
-         */
-        InstructionDecoded instruction = new InstructionDecoded();
-
         // Extract instruction fields based on RISC-V RV32I format
         int opcode = instructionInt & 0x7F; // bits 0-6
-        instruction.setOpcode(opcode);
+        decodedInstruction.setOpcode(opcode);
         int rd = (instructionInt >> 7) & 0x1F; // bits 7-11
-        instruction.setRd(rd);
+        decodedInstruction.setRd(rd);
         int func3 = (instructionInt >> 12) & 0x7; // bits 12-14
-        instruction.setFunc3(func3);
+        decodedInstruction.setFunc3(func3);
         int rs1 = (instructionInt >> 15) & 0x1F; // bits 15-19
-        instruction.setRs1(rs1);
+        decodedInstruction.setRs1(rs1);
         int rs2 = (instructionInt >> 20) & 0x1F; // bits 20-24
-        instruction.setRs2(rs2);
+        decodedInstruction.setRs2(rs2);
         int func7 = (instructionInt >> 25) & 0x7F; // bits 25-31
-        instruction.setFunc7(func7);
+        decodedInstruction.setFunc7(func7);
 
         // Immediate values for different instruction formats
         // I-type: Sign extended 12-bit immediate
         int imm_i = ((instructionInt >> 20) << 20) >> 20;
-        instruction.setImm_i(imm_i);
+        decodedInstruction.setImm_i(imm_i);
 
         // S-type: Sign extended 12-bit immediate
         int imm_s = (((instructionInt >> 25) << 5) | ((instructionInt >> 7) & 0x1F));
         imm_s = (imm_s << 20) >> 20; // Sign extend
-        instruction.setImm_s(imm_s);
+        decodedInstruction.setImm_s(imm_s);
 
         // B-type: Sign extended 13-bit immediate
         int imm_b = (((instructionInt >> 31) << 12) // imm[12]
@@ -142,11 +201,11 @@ public class RV32iCpu {
                 |
                 ((instructionInt >> 8) & 0xF) << 1; // imm[4:1]
         imm_b = (imm_b << 19) >> 19; // Sign extend
-        instruction.setImm_b(imm_b);
+        decodedInstruction.setImm_b(imm_b);
 
         // U-type: 20-bit immediate, shifted left by 12
         int imm_u = instructionInt & 0xFFFFF000;
-        instruction.setImm_u(imm_u);
+        decodedInstruction.setImm_u(imm_u);
 
         // J-type: Sign extended 21-bit immediate
         int imm_j = (((instructionInt >> 31) << 20) // imm[20]
@@ -157,23 +216,25 @@ public class RV32iCpu {
                 |
                 ((instructionInt >> 21) & 0x3FF) << 1); // imm[10:1]
         imm_j = (imm_j << 11) >> 11; // Sign extend
-        instruction.setImm_j(imm_j);
-        return instruction;
-
+        decodedInstruction.setImm_j(imm_j);
+        return decodedInstruction;
     }
 
     private void execute(InstructionDecoded instruction) {
-        int opcode = instruction.getOpcode();
-        int rd = instruction.getRd();
-        int rs1 = instruction.getRs1();
-        int rs2 = instruction.getRs2();
-        int func3 = instruction.getFunc3();
-        int func7 = instruction.getFunc7();
-        int imm_i = instruction.getImm_i();
-        int imm_s = instruction.getImm_s();
-        int imm_b = instruction.getImm_b();
-        int imm_u = instruction.getImm_u();
-        int imm_j = instruction.getImm_j();
+        final int opcode = instruction.getOpcode();
+        final int rd = instruction.getRd();
+        final int rs1 = instruction.getRs1();
+        final int rs2 = instruction.getRs2();
+        final int func3 = instruction.getFunc3();
+        final int func7 = instruction.getFunc7();
+        final int imm_i = instruction.getImm_i();
+        final int imm_s = instruction.getImm_s();
+        final int imm_b = instruction.getImm_b();
+        final int imm_u = instruction.getImm_u();
+        final int imm_j = instruction.getImm_j();
+        
+        // Ensure x0 is always 0
+        x[0] = 0;
         switch (opcode) {
             // R-type instructions
             case 0b0110011: // R-type
@@ -214,7 +275,7 @@ public class RV32iCpu {
                 break;
 
             // I-type instructions
-            case 0b0010011: // I-type ALU
+            case 0b0010011: // I-type ALU instructions
                 switch (func3) {
                     case 0b000: // ADDI
                         x[rd] = x[rs1] + imm_i;
@@ -226,16 +287,21 @@ public class RV32iCpu {
                         x[rd] = (x[rs1] < imm_i) ? 1 : 0;
                         break;
                     case 0b011: // SLTIU
-                        x[rd] = (Integer.compareUnsigned(x[rs1], imm_i) < 0) ? 1 : 0;
+                        // Use direct comparison for better performance
+                        int xrs1 = x[rs1];
+                        x[rd] = ((xrs1 < 0) != (imm_i < 0)) ? 
+                                ((xrs1 < 0) ? 0 : 1) : 
+                                ((xrs1 < imm_i) ? 1 : 0);
                         break;
                     case 0b100: // XORI
                         x[rd] = x[rs1] ^ imm_i;
                         break;
-                    case 0b101: // SRLI/SRAI
-                        if ((imm_i & 0xFE0) == 0) {
-                            x[rd] = x[rs1] >>> (imm_i & 0x1F); // SRLI
-                        } else if ((imm_i & 0xFE0) == 0x400) {
-                            x[rd] = x[rs1] >> (imm_i & 0x1F); // SRAI
+                    case 0b101: // SRLI, SRAI
+                        int shamt = imm_i & 0x1F;
+                        if ((imm_i & 0xFE0) == 0) { // SRLI
+                            x[rd] = x[rs1] >>> shamt;
+                        } else if ((imm_i & 0xFE0) == 0x400) { // SRAI
+                            x[rd] = x[rs1] >> shamt;
                         }
                         break;
                     case 0b110: // ORI
@@ -263,19 +329,21 @@ public class RV32iCpu {
                 }
                 try {
                     switch (func3) {
-                        case 0b000: // LB
-                            x[rd] = memory.readByte(address);
+                        case 0b000: // LB - load byte with sign extension
+                            byte b = memory.readByte(address);
+                            x[rd] = b; // Java automatically sign-extends byte to int
                             break;
-                        case 0b001: // LH
-                            x[rd] = memory.readHalfWord(address);
+                        case 0b001: // LH - load half-word with sign extension
+                            short h = memory.readHalfWord(address);
+                            x[rd] = h; // Java automatically sign-extends short to int
                             break;
-                        case 0b010: // LW
+                        case 0b010: // LW - load word
                             x[rd] = memory.readWord(address);
                             break;
-                        case 0b100: // LBU
+                        case 0b100: // LBU - load byte unsigned
                             x[rd] = memory.readByte(address) & 0xFF;
                             break;
-                        case 0b101: // LHU
+                        case 0b101: // LHU - load half-word unsigned
                             x[rd] = memory.readHalfWord(address) & 0xFFFF;
                             break;
                     }
@@ -295,13 +363,13 @@ public class RV32iCpu {
                 }
                 try {
                     switch (func3) {
-                        case 0b000: // SB
-                            memory.writeByte(address, (byte) x[rs2]);
+                        case 0b000: // SB - store byte
+                            memory.writeByte(address, (byte) (x[rs2] & 0xFF));
                             break;
-                        case 0b001: // SH
-                            memory.writeHalfWord(address, (short) x[rs2]);
+                        case 0b001: // SH - store half-word
+                            memory.writeHalfWord(address, (short) (x[rs2] & 0xFFFF));
                             break;
-                        case 0b010: // SW
+                        case 0b010: // SW - store word
                             memory.writeWord(address, x[rs2]);
                             break;
                     }
@@ -327,31 +395,33 @@ public class RV32iCpu {
                         takeBranch = (x[rs1] >= x[rs2]);
                         break;
                     case 0b110: // BLTU
-                        takeBranch = (Integer.compareUnsigned(x[rs1], x[rs2]) < 0);
+                        // Optimized unsigned comparison
+                        int xrs1 = x[rs1];
+                        int xrs2 = x[rs2];
+                        takeBranch = ((xrs1 < 0) != (xrs2 < 0)) ? 
+                                    (xrs1 < 0) : (xrs1 < xrs2);
                         break;
                     case 0b111: // BGEU
-                        takeBranch = (Integer.compareUnsigned(x[rs1], x[rs2]) >= 0);
+                        // Optimized unsigned comparison
+                        xrs1 = x[rs1];
+                        xrs2 = x[rs2];
+                        takeBranch = ((xrs1 < 0) != (xrs2 < 0)) ? 
+                                    (xrs2 < 0) : (xrs1 >= xrs2);
                         break;
                 }
                 if (takeBranch) {
-                    pc += imm_b - INSTRUCTION_SIZE; // Subtract INSTRUCTION_SIZE because pc was already incremented in
-                                                    // fetch
-                    /*
-                     * if (lastPCBranch == -1) {
-                     * lastPCBranch = pc;
-                     * } else if (pc == lastPCBranch) {
-                     * loopCountBranch++;
-                     * } else {
-                     * loopCountBranch = 0;
-                     * lastPCBranch = -1;
-                     * }
-                     * if (loopCountBranch > 20) {
-                     * loopCountBranch = 0;
-                     * lastPCBranch = -1;
-                     * System.out.println("Getting input");
-                     * memory.getInput(reader.nextLine());
-                     * }
-                     */
+                    pc += imm_b - INSTRUCTION_SIZE; // Subtract INSTRUCTION_SIZE because pc was already incremented in fetch
+                    
+                    // Check for infinite loops
+                    if (pc == lastPC) {
+                        loopCount++;
+                        if (loopCount > LOOP_THRESHOLD) {
+                            System.out.println("Infinite loop detected at PC: 0x" + Integer.toHexString(pc));
+                            System.out.println("Program halted after " + LOOP_THRESHOLD + " iterations");
+                            this.running = false;
+                            return;
+                        }
+                    }
                 }
                 break;
 
@@ -477,10 +547,19 @@ public class RV32iCpu {
         return mapAddress(i);
     }
 
-    public void find13And12(byte[] arr) {
-        for (int i = 0; i < arr.length; i++) {
-            if (arr[i] == 13 || arr[i] == 12) {
-                if (arr[i] == 13) {
+    /**
+     * Find bytes with value 13 or 12 in a ByteBuffer
+     * @param buffer The ByteBuffer to search
+     */
+    public void find13And12(ByteBuffer buffer) {
+        ByteBuffer duplicate = buffer.duplicate();
+        duplicate.clear(); // Reset position to start
+        int limit = duplicate.limit();
+        
+        for (int i = 0; i < limit; i++) {
+            byte value = duplicate.get(i);
+            if (value == 13 || value == 12) {
+                if (value == 13) {
                     System.out.println("Found 13 at index " + i);
                 } else {
                     System.out.println("Found 12 at index " + i);

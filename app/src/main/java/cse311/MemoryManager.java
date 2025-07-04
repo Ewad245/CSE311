@@ -1,5 +1,7 @@
 package cse311;
 
+import java.nio.ByteBuffer;
+
 public class MemoryManager {
     private SimpleMemory memory;
     private Uart uart;
@@ -27,19 +29,34 @@ public class MemoryManager {
         this.stackPtr = STACK_START;
         this.uart = new Uart();
     }
-
-    public void loadProgram(byte[] program) throws MemoryAccessException {
-        // Load program into text segment
-        for (int i = 0; i < program.length; i++) {
-            memory.writeByte(TEXT_START + i, program[i]);
-        }
+    
+    /**
+     * Clear the memory cache
+     */
+    public void clearCache() {
+        memory.clearCache();
     }
 
+    public void loadProgram(byte[] program) throws MemoryAccessException {
+        // Load program into text segment using bulk initialization
+        memory.initializeMemory(TEXT_START, program);
+    }
+    
+    /**
+     * Initialize a region of memory with the given data
+     * @param address The starting address
+     * @param data The data to write
+     * @throws MemoryAccessException If memory access fails
+     */
+    public void initializeMemory(int address, byte[] data) throws MemoryAccessException {
+        memory.initializeMemory(address, data);
+    }
+    
+    // This method was removed to fix duplicate method error
+
     public void loadData(byte[] data) throws MemoryAccessException {
-        // Load data into data segment
-        for (int i = 0; i < data.length; i++) {
-            memory.writeByte(DATA_START + i, data[i]);
-        }
+        // Load data into data segment using bulk initialization
+        memory.initializeMemory(DATA_START, data);
     }
 
     public int allocateHeap(int size) throws MemoryAccessException {
@@ -186,11 +203,20 @@ public class MemoryManager {
         return memory.dumpMemory(TEXT_START, STACK_START - TEXT_START);
     }
 
-    public byte[] getByteMemory() {
+    /**
+     * Get the memory as a ByteBuffer
+     * @return A duplicate of the memory ByteBuffer
+     */
+    public ByteBuffer getByteMemory() {
         return memory.getMemory();
     }
 
-    public void getInput(String data) {
-        uart.receiveDatas(data.getBytes());
+    public void getInput(String input) {
+        if (input == null || input.isEmpty()) {
+            return;
+        }
+
+        // Use the more efficient method to receive string data
+        uart.receiveString(input);
     }
 }

@@ -12,32 +12,45 @@ public class App {
     }
 
     public static void main(String[] args) {
+        // Use direct ByteBuffer for memory with 128MB size
         SimpleMemory memory = new SimpleMemory(128 * 1024 * 1024);
         MemoryManager memoryManager = new MemoryManager(memory);
         RV32iCpu cpu = new RV32iCpu(memoryManager);
         ElfLoader elfLoader = new ElfLoader(memoryManager);
 
         try {
+            if (args.length < 1) {
+                System.err.println("Error: Please provide an ELF file path as an argument");
+                System.exit(1);
+            }
+            
             // Load ELF file
+            long startTime = System.currentTimeMillis();
             elfLoader.loadElf(args[0]);
+            long loadTime = System.currentTimeMillis() - startTime;
 
-            // Set CPU's program counter to ELF entry point
-            // cpu.setPC(elfLoader.getEntryPoint());
-
-            // Start the CPU
+            // Get entry point
             int entryPoint = elfLoader.getEntryPoint();
-            PrintStream output = new PrintStream(System.out, false);
-            output.println("Entry Point: " + entryPoint);
+            PrintStream output = new PrintStream(System.out, true); // Auto-flush enabled
+            output.println("Entry Point: 0x" + Integer.toHexString(entryPoint));
+            output.println("ELF loaded in " + loadTime + "ms");
+            
             // Optional: Print memory map for debugging
-            output.println(memoryManager.getMemoryMap());
-            output.flush();
+            if (args.length > 1 && args[1].equals("--debug")) {
+                output.println(memoryManager.getMemoryMap());
+            }
 
             // Start the CPU
+            startTime = System.currentTimeMillis();
             cpu.setProgramCounterEntryPoint(entryPoint);
             cpu.turnOn();
 
-            // Optional: Print CPU state after execution
-            // System.out.println(cpu.getState());
+            // The CPU runs in a separate thread, so we don't need to wait for it to finish
+            // Add shutdown hook to stop CPU gracefully on JVM exit
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                System.out.println("\nShutting down CPU...");
+                cpu.stop();
+            }));
 
         } catch (Exception e) {
             System.err.println("Error running program: " + e.getMessage());

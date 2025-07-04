@@ -1,22 +1,22 @@
 package cse311;
 
 import java.util.concurrent.locks.ReentrantLock;
+import java.nio.ByteBuffer;
 
 public class Uart {
     private static final int TX_READY = 0x20; // Bit 5 (0x20) for TX ready
     private static final int RX_READY = 0x01; // Bit 0 (0x01) for RX ready
+    private static final int BUFFER_SIZE = 1024; // Reduced buffer size to avoid excessive memory usage
 
-    private int status;
-    private int control;
-    private byte[] rxBuffer;
-    private int rxIndex;
+    private volatile int status;
+    private volatile int control;
+    private final ByteBuffer rxBuffer; // Using ByteBuffer for better memory management
     private final ReentrantLock lock = new ReentrantLock();
 
     public Uart() {
         status = TX_READY; // Always ready to transmit
         control = 0;
-        rxBuffer = new byte[2048];
-        rxIndex = 0;
+        rxBuffer = ByteBuffer.allocate(BUFFER_SIZE);
     }
 
     public int read(int address) {
@@ -26,10 +26,15 @@ public class Uart {
                 case 0x0: // TX Data
                     return 0;
                 case 0x4: // RX Data
-                    if (rxIndex > 0) {
-                        byte data = rxBuffer[--rxIndex];
-                        if (rxIndex == 0) {
-                            status &= ~RX_READY; // Clear RX ready bit
+                    if (rxBuffer.position() > 0) {
+                        // Get the last byte from the buffer
+                        rxBuffer.position(rxBuffer.position() - 1);
+                        byte data = rxBuffer.get();
+                        rxBuffer.position(rxBuffer.position()); // Update position
+                        
+                        // If buffer is now empty, clear RX ready bit
+                        if (rxBuffer.position() == 0) {
+                            status &= ~RX_READY;
                         }
                         return data & 0xFF;
                     }
@@ -52,8 +57,12 @@ public class Uart {
         try {
             switch (address - MemoryManager.UART_BASE) {
                 case 0x0: // TX Data
-                    System.out.write(value & 0xFF);
-                    System.out.flush();
+                    char c = (char)(value & 0xFF);
+                    System.out.print(c);
+                    // Flush immediately for newlines to ensure output is visible
+                    if (c == '\n') {
+                        System.out.flush();
+                    }
                     break;
                 case 0xC: // Control
                     control = value;
@@ -67,9 +76,24 @@ public class Uart {
     public void receiveData(byte data) {
         lock.lock();
         try {
-            if (rxIndex < rxBuffer.length) {
-                rxBuffer[rxIndex++] = data;
+            // Check if buffer has space
+            if (rxBuffer.position() < BUFFER_SIZE) {
+                // Add data to buffer
+                rxBuffer.put(data);
                 status |= RX_READY;
+            } else {
+                // Buffer is full, compact it if possible
+                if (rxBuffer.position() > 0) {
+                    rxBuffer.flip();
+                    // Move data to the beginning of the buffer
+                    ByteBuffer newBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+                    newBuffer.put(rxBuffer);
+                    rxBuffer.clear();
+                    rxBuffer.put(newBuffer.array(), 0, newBuffer.position());
+                    // Now add the new data
+                    rxBuffer.put(data);
+                    status |= RX_READY;
+                }
             }
         } finally {
             lock.unlock();
@@ -77,8 +101,36 @@ public class Uart {
     }
 
     public void receiveDatas(byte[] data) {
-        for (int i = 0; i < data.length; i++) {
-            receiveData(data[i]);
+        if (data == null || data.length == 0) {
+            return;
         }
+        
+        lock.lock();
+        try {
+            // Check if we can add all data at once
+            if (rxBuffer.remaining() >= data.length) {
+                rxBuffer.put(data);
+                status |= RX_READY;
+            } else {
+                // Add data one by one
+                for (byte b : data) {
+                    receiveData(b);
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+    
+    /**
+     * Receive a string as input data
+     * @param input The string to receive
+     */
+    public void receiveString(String input) {
+        if (input == null || input.isEmpty()) {
+            return;
+        }
+        
+        receiveDatas(input.getBytes());
     }
 }

@@ -115,18 +115,20 @@ public class ElfLoader {
         int mappedAddr = mapAddress(virtualAddr);
 
         if (sizeInFile > 0) {
+            // Create a direct buffer view of the segment data for more efficient copying
+            ByteBuffer segmentBuffer = ByteBuffer.wrap(elfData, fileOffset, sizeInFile);
+            
+            // Use bulk initialization when possible
             byte[] segmentData = new byte[sizeInFile];
-            System.arraycopy(elfData, fileOffset, segmentData, 0, sizeInFile);
-
-            // Use writeByteToText for initial program loading
-            for (int i = 0; i < sizeInFile; i++) {
-                memory.writeByteToText(mappedAddr + i, segmentData[i]);
-            }
+            segmentBuffer.get(segmentData);
+            memory.initializeMemory(mappedAddr, segmentData);
         }
 
-        // Zero-initialize remaining memory
-        for (int i = sizeInFile; i < sizeInMem; i++) {
-            memory.writeByteToText(mappedAddr + i, (byte) 0);
+        // Zero-initialize remaining memory if needed
+        if (sizeInMem > sizeInFile) {
+            // Create a zero-filled buffer for the remaining memory
+            byte[] zeroData = new byte[sizeInMem - sizeInFile];
+            memory.initializeMemory(mappedAddr + sizeInFile, zeroData);
         }
     }
 

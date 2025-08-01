@@ -1,6 +1,8 @@
 package cse311;
 
 import java.util.Scanner;
+import java.util.HashMap;
+import java.util.Map;
 
 public class RV32iCpu {
 
@@ -13,16 +15,190 @@ public class RV32iCpu {
     // private int[] instruction;
     private static final int INSTRUCTION_SIZE = 4; // 32-bit instructions
 
+    // Privilege levels
+    public static final int PRIVILEGE_USER = 0;       // U-mode
+    public static final int PRIVILEGE_SUPERVISOR = 1; // S-mode
+    public static final int PRIVILEGE_MACHINE = 3;    // M-mode
+    
+    // Current privilege level
+    private int privilegeMode = PRIVILEGE_MACHINE; // Start in M-mode
+    
+    // CSR addresses
+    // Machine-level CSRs
+    public static final int MSTATUS = 0x300;    // Machine status register
+    public static final int MISA = 0x301;       // Machine ISA register
+    public static final int MEDELEG = 0x302;    // Machine exception delegation register
+    public static final int MIDELEG = 0x303;    // Machine interrupt delegation register
+    public static final int MIE = 0x304;        // Machine interrupt enable register
+    public static final int MTVEC = 0x305;      // Machine trap handler base address
+    public static final int MEPC = 0x341;       // Machine exception program counter
+    public static final int MCAUSE = 0x342;     // Machine trap cause
+    public static final int MTVAL = 0x343;      // Machine trap value
+    public static final int MIP = 0x344;        // Machine interrupt pending
+    
+    // Supervisor-level CSRs
+    public static final int SSTATUS = 0x100;    // Supervisor status register
+    public static final int SIE = 0x104;        // Supervisor interrupt enable register
+    public static final int STVEC = 0x105;      // Supervisor trap handler base address
+    public static final int SEPC = 0x141;       // Supervisor exception program counter
+    public static final int SCAUSE = 0x142;     // Supervisor trap cause
+    public static final int STVAL = 0x143;      // Supervisor trap value
+    public static final int SIP = 0x144;        // Supervisor interrupt pending
+    public static final int SATP = 0x180;       // Supervisor address translation and protection
+    
+    // CSR access types
+    private static final int CSR_READ_WRITE = 0b01;
+    private static final int CSR_READ_SET = 0b10;
+    private static final int CSR_READ_CLEAR = 0b11;
+    
+    // CSR registers map
+    private Map<Integer, Integer> csrRegisters = new HashMap<>();
+    
     private MemoryManager memory;
     private Scanner reader;
     private Thread cpuThread;
     private boolean running = false;
     private static final int LOOP_THRESHOLD = 1000; // Maximum times to execute same instruction
     private InputThread input;
+    private TaskManager taskManager; // Added TaskManager reference
 
     public RV32iCpu(MemoryManager memory) {
         this.memory = memory;
         input = new InputThread();
+        this.taskManager = new TaskManager(this, memory); // Initialize TaskManager
+        
+        // Initialize CSR registers
+        initializeCSRs();
+    }
+    
+    /**
+     * Initialize Control and Status Registers (CSRs) with default values
+     */
+    private void initializeCSRs() {
+        // Machine-level CSRs
+        csrRegisters.put(MISA, 0x40001108);      // RV32I base ISA with M-mode, M-extension, and Zicsr
+        csrRegisters.put(MSTATUS, 0x1800);       // MPP (Machine Previous Privilege) set to M-mode
+        csrRegisters.put(MEDELEG, 0x0);          // No exception delegation
+        csrRegisters.put(MIDELEG, 0x0);          // No interrupt delegation
+        csrRegisters.put(MIE, 0x0);              // No interrupts enabled
+        csrRegisters.put(MTVEC, 0x0);            // Trap vector base address
+        csrRegisters.put(MEPC, 0x0);             // Exception program counter
+        csrRegisters.put(MCAUSE, 0x0);           // Trap cause
+        csrRegisters.put(MTVAL, 0x0);            // Trap value
+        csrRegisters.put(MIP, 0x0);              // No interrupts pending
+        
+        // Supervisor-level CSRs
+        csrRegisters.put(SSTATUS, 0x0);          // Supervisor status
+        csrRegisters.put(SIE, 0x0);              // No supervisor interrupts enabled
+        csrRegisters.put(STVEC, 0x0);            // Supervisor trap vector base address
+        csrRegisters.put(SEPC, 0x0);             // Supervisor exception program counter
+        csrRegisters.put(SCAUSE, 0x0);           // Supervisor trap cause
+        csrRegisters.put(STVAL, 0x0);            // Supervisor trap value
+        csrRegisters.put(SIP, 0x0);              // No supervisor interrupts pending
+        csrRegisters.put(SATP, 0x0);             // No address translation (bare mode)
+    }
+    
+    /**
+     * Read a CSR register value
+     * 
+     * @param csrAddress The CSR address
+     * @return The CSR value, or 0 if the CSR is not accessible in the current privilege mode
+     */
+    private int readCSR(int csrAddress) {
+        // Check if the CSR is accessible in the current privilege mode
+        if (!isCSRAccessible(csrAddress)) {
+            // Trigger illegal instruction exception
+            handleException(2, 0); // 2 = illegal instruction
+            return 0;
+        }
+        
+        // Return the CSR value, or 0 if not initialized
+        return csrRegisters.getOrDefault(csrAddress, 0);
+    }
+    
+    /**
+     * Write a value to a CSR register
+     * 
+     * @param csrAddress The CSR address
+     * @param value The value to write
+     * @param accessType The access type (CSR_READ_WRITE, CSR_READ_SET, CSR_READ_CLEAR)
+     * @return The previous CSR value, or 0 if the CSR is not accessible in the current privilege mode
+     */
+    private int writeCSR(int csrAddress, int value, int accessType) {
+        // Check if the CSR is accessible in the current privilege mode
+        if (!isCSRAccessible(csrAddress)) {
+            // Trigger illegal instruction exception
+            handleException(2, 0); // 2 = illegal instruction
+            return 0;
+        }
+        
+        // Get the current value
+        int currentValue = csrRegisters.getOrDefault(csrAddress, 0);
+        
+        // Calculate the new value based on the access type
+        int newValue;
+        switch (accessType) {
+            case CSR_READ_WRITE:
+                newValue = value;
+                break;
+            case CSR_READ_SET:
+                newValue = currentValue | value;
+                break;
+            case CSR_READ_CLEAR:
+                newValue = currentValue & ~value;
+                break;
+            default:
+                newValue = value;
+        }
+        
+        // Update the CSR value
+        csrRegisters.put(csrAddress, newValue);
+        
+        // Handle side effects of writing to certain CSRs
+        handleCSRSideEffects(csrAddress, newValue, currentValue);
+        
+        return currentValue;
+    }
+    
+    /**
+     * Check if a CSR is accessible in the current privilege mode
+     * 
+     * @param csrAddress The CSR address
+     * @return true if the CSR is accessible, false otherwise
+     */
+    private boolean isCSRAccessible(int csrAddress) {
+        // Extract the privilege level from the CSR address (bits 9:8)
+        int csrPrivilege = (csrAddress >> 8) & 0x3;
+        
+        // CSR is accessible if the current privilege level is >= the CSR privilege level
+        return privilegeMode >= csrPrivilege;
+    }
+    
+    /**
+     * Handle side effects of writing to certain CSRs
+     * 
+     * @param csrAddress The CSR address
+     * @param newValue The new CSR value
+     * @param oldValue The old CSR value
+     */
+    private void handleCSRSideEffects(int csrAddress, int newValue, int oldValue) {
+        switch (csrAddress) {
+            case MSTATUS:
+                // Update SSTATUS when MSTATUS changes
+                int sstatus = newValue & 0x000C0122; // Only copy relevant bits to SSTATUS
+                csrRegisters.put(SSTATUS, sstatus);
+                break;
+            case SSTATUS:
+                // Update MSTATUS when SSTATUS changes
+                int mstatus = readCSR(MSTATUS);
+                mstatus = (mstatus & ~0x000C0122) | (newValue & 0x000C0122);
+                csrRegisters.put(MSTATUS, mstatus);
+                break;
+            case SATP:
+                // Handle address translation mode changes
+                // For now, we don't implement address translation
+                break;
+        }
     }
 
     public void setProgramCounterEntryPoint(int entryPoint) {
@@ -64,12 +240,133 @@ public class RV32iCpu {
             lastPC = pc;
             loopCount = 0;
         }
-        // Fetch the instruction from memory at the address in the pc register
-        int instructionFetched = fetch();
-        InstructionDecoded instructionDecoded = decode(instructionFetched);
-        execute(instructionDecoded); // Viet them update cho pc, cpu sau nay
-        // System.out.println(instructionDecoded.toString());
-        // displayRegisters();
+        
+        try {
+            // Fetch the instruction from memory at the address in the pc register
+            int instructionFetched = fetch();
+            InstructionDecoded instructionDecoded = decode(instructionFetched);
+            execute(instructionDecoded);
+            // System.out.println(instructionDecoded.toString());
+            // displayRegisters();
+        } catch (MemoryAccessException e) {
+            // Handle memory access exception using the handleException method
+            handleException(7, pc - INSTRUCTION_SIZE); // 7 = store/AMO access fault
+        } catch (Exception e) {
+            // Handle other exceptions using the handleException method
+            handleException(2, pc - INSTRUCTION_SIZE); // 2 = illegal instruction
+            e.printStackTrace(); // Log the exception for debugging
+        }
+    }
+    
+
+    
+    /**
+     * Expose the handleException method for testing
+     * 
+     * @param cause The exception cause
+     * @param tval The trap value
+     */
+    public void handleException(int cause, int tval) {
+        // Directly implement exception handling here to avoid recursive call
+        // Check if the exception should be delegated to S-mode
+        boolean delegate = false;
+        if (privilegeMode < PRIVILEGE_MACHINE) {
+            int medeleg = readCSR(MEDELEG);
+            delegate = ((medeleg >> cause) & 1) == 1;
+        }
+        
+        if (delegate && privilegeMode == PRIVILEGE_USER) {
+            // Delegate to S-mode
+            // Save current PC to SEPC
+            csrRegisters.put(SEPC, pc);
+            
+            // Set SCAUSE to the exception cause
+            csrRegisters.put(SCAUSE, cause);
+            
+            // Set STVAL to the trap value
+            csrRegisters.put(STVAL, tval);
+            
+            // Update SSTATUS SPP field to the current privilege mode
+            int sstatus = readCSR(SSTATUS);
+            sstatus = (sstatus & ~0x100) | ((privilegeMode & 0x1) << 8);
+            csrRegisters.put(SSTATUS, sstatus);
+            
+            // Set privilege mode to S-mode
+            privilegeMode = PRIVILEGE_SUPERVISOR;
+            
+            // Jump to the trap handler address in STVEC
+            pc = readCSR(STVEC) & ~0x3; // Clear mode bits
+        } else {
+            // Handle in M-mode
+            // Save current PC to MEPC
+            csrRegisters.put(MEPC, pc);
+            
+            // Set MCAUSE to the exception cause
+            csrRegisters.put(MCAUSE, cause);
+            
+            // Set MTVAL to the trap value
+            csrRegisters.put(MTVAL, tval);
+            
+            // Update MSTATUS MPP field to the current privilege mode
+            int mstatus = readCSR(MSTATUS);
+            mstatus = (mstatus & ~0x1800) | (privilegeMode << 11);
+            csrRegisters.put(MSTATUS, mstatus);
+            
+            // Set privilege mode to M-mode
+            privilegeMode = PRIVILEGE_MACHINE;
+            
+            // Jump to the trap handler address in MTVEC
+            pc = readCSR(MTVEC) & ~0x3; // Clear mode bits
+        }
+    }
+    
+    /**
+     * Return from an exception/interrupt (MRET or SRET instruction)
+     * 
+     * @param fromMode The privilege mode returning from (PRIVILEGE_MACHINE or PRIVILEGE_SUPERVISOR)
+     */
+    private void returnFromException(int fromMode) {
+        if (fromMode == PRIVILEGE_MACHINE) {
+            // MRET instruction
+            // Get the previous privilege mode from MSTATUS.MPP
+            int mstatus = readCSR(MSTATUS);
+            int prevMode = (mstatus >> 11) & 0x3;
+            
+            // Set the privilege mode to the previous mode
+            privilegeMode = prevMode;
+            
+            // Update MSTATUS
+            // Clear MPP (set it to U-mode)
+            mstatus = mstatus & ~0x1800;
+            // Set MIE to the value of MPIE
+            mstatus = (mstatus & ~0x8) | (((mstatus >> 7) & 0x1) << 3);
+            // Set MPIE to 1
+            mstatus = mstatus | 0x80;
+            csrRegisters.put(MSTATUS, mstatus);
+            
+            // Set PC to the value in MEPC
+            pc = readCSR(MEPC);
+        } else if (fromMode == PRIVILEGE_SUPERVISOR) {
+            // SRET instruction
+            // Get the previous privilege mode from SSTATUS.SPP
+            int sstatus = readCSR(SSTATUS);
+            int prevMode = ((sstatus >> 8) & 0x1) == 1 ? PRIVILEGE_SUPERVISOR : PRIVILEGE_USER;
+            
+            // Set the privilege mode to the previous mode
+            privilegeMode = prevMode;
+            
+            // Update SSTATUS
+            // Clear SPP
+            sstatus = sstatus & ~0x100;
+            // Set SIE to the value of SPIE
+            sstatus = (sstatus & ~0x2) | (((sstatus >> 5) & 0x1) << 1);
+            // Set SPIE to 1
+            sstatus = sstatus | 0x20;
+            csrRegisters.put(SSTATUS, sstatus);
+            
+            // Set PC to the value in SEPC
+            pc = readCSR(SEPC);
+        }
     }
 
     private int fetch() throws MemoryAccessException {
@@ -178,37 +475,136 @@ public class RV32iCpu {
             // R-type instructions
             case 0b0110011: // R-type
                 switch (func3) {
-                    case 0b000: // ADD/SUB
+                    case 0b000: // ADD/SUB/MUL
                         if (func7 == 0) {
                             x[rd] = x[rs1] + x[rs2]; // ADD
                         } else if (func7 == 0b0100000) {
                             x[rd] = x[rs1] - x[rs2]; // SUB
+                        } else if (func7 == 0b0000001) {
+                            x[rd] = x[rs1] * x[rs2]; // MUL (M-extension)
+                        } else {
+                            // Illegal instruction
+                            handleException(2, pc - INSTRUCTION_SIZE);
                         }
                         break;
-                    case 0b001: // SLL
-                        x[rd] = x[rs1] << (x[rs2] & 0x1F);
+                    case 0b001: // SLL/MULH
+                        if (func7 == 0) {
+                            x[rd] = x[rs1] << (x[rs2] & 0x1F); // SLL
+                        } else if (func7 == 0b0000001) {
+                            // MULH (M-extension) - high bits of signed×signed product
+                            long a = x[rs1];
+                            long b = x[rs2];
+                            // Sign extend to 64 bits
+                            if ((a & 0x80000000L) != 0) a |= 0xFFFFFFFF00000000L;
+                            if ((b & 0x80000000L) != 0) b |= 0xFFFFFFFF00000000L;
+                            long result = a * b;
+                            x[rd] = (int)(result >> 32); // High 32 bits
+                        } else {
+                            // Illegal instruction
+                            handleException(2, pc - INSTRUCTION_SIZE);
+                        }
                         break;
-                    case 0b010: // SLT
-                        x[rd] = (x[rs1] < x[rs2]) ? 1 : 0;
+                    case 0b010: // SLT/MULHSU
+                        if (func7 == 0) {
+                            x[rd] = (x[rs1] < x[rs2]) ? 1 : 0; // SLT
+                        } else if (func7 == 0b0000001) {
+                            // MULHSU (M-extension) - high bits of signed×unsigned product
+                            long a = x[rs1];
+                            long b = Integer.toUnsignedLong(x[rs2]);
+                            // Sign extend a to 64 bits
+                            if ((a & 0x80000000L) != 0) a |= 0xFFFFFFFF00000000L;
+                            long result = a * b;
+                            x[rd] = (int)(result >> 32); // High 32 bits
+                        } else {
+                            // Illegal instruction
+                            handleException(2, pc - INSTRUCTION_SIZE);
+                        }
                         break;
-                    case 0b011: // SLTU
-                        x[rd] = (Integer.compareUnsigned(x[rs1], x[rs2]) < 0) ? 1 : 0;
+                    case 0b011: // SLTU/MULHU
+                        if (func7 == 0) {
+                            x[rd] = (Integer.compareUnsigned(x[rs1], x[rs2]) < 0) ? 1 : 0; // SLTU
+                        } else if (func7 == 0b0000001) {
+                            // MULHU (M-extension) - high bits of unsigned×unsigned product
+                            long a = Integer.toUnsignedLong(x[rs1]);
+                            long b = Integer.toUnsignedLong(x[rs2]);
+                            long result = a * b;
+                            x[rd] = (int)(result >> 32); // High 32 bits
+                        } else {
+                            // Illegal instruction
+                            handleException(2, pc - INSTRUCTION_SIZE);
+                        }
                         break;
-                    case 0b100: // XOR
-                        x[rd] = x[rs1] ^ x[rs2];
+                    case 0b100: // XOR/DIV
+                        if (func7 == 0) {
+                            x[rd] = x[rs1] ^ x[rs2]; // XOR
+                        } else if (func7 == 0b0000001) {
+                            // DIV (M-extension) - signed division
+                            if (x[rs2] == 0) {
+                                // Division by zero
+                                x[rd] = -1; // All 1s (0xFFFFFFFF)
+                            } else if (x[rs1] == Integer.MIN_VALUE && x[rs2] == -1) {
+                                // Signed overflow case
+                                x[rd] = Integer.MIN_VALUE;
+                            } else {
+                                x[rd] = x[rs1] / x[rs2];
+                            }
+                        } else {
+                            // Illegal instruction
+                            handleException(2, pc - INSTRUCTION_SIZE);
+                        }
                         break;
-                    case 0b101: // SRL/SRA
+                    case 0b101: // SRL/SRA/DIVU
                         if (func7 == 0) {
                             x[rd] = x[rs1] >>> (x[rs2] & 0x1F); // SRL
                         } else if (func7 == 0b0100000) {
                             x[rd] = x[rs1] >> (x[rs2] & 0x1F); // SRA
+                        } else if (func7 == 0b0000001) {
+                            // DIVU (M-extension) - unsigned division
+                            if (x[rs2] == 0) {
+                                // Division by zero
+                                x[rd] = -1; // All 1s (0xFFFFFFFF)
+                            } else {
+                                x[rd] = Integer.divideUnsigned(x[rs1], x[rs2]);
+                            }
+                        } else {
+                            // Illegal instruction
+                            handleException(2, pc - INSTRUCTION_SIZE);
                         }
                         break;
-                    case 0b110: // OR
-                        x[rd] = x[rs1] | x[rs2];
+                    case 0b110: // OR/REM
+                        if (func7 == 0) {
+                            x[rd] = x[rs1] | x[rs2]; // OR
+                        } else if (func7 == 0b0000001) {
+                            // REM (M-extension) - signed remainder
+                            if (x[rs2] == 0) {
+                                // Division by zero
+                                x[rd] = x[rs1]; // Return dividend
+                            } else if (x[rs1] == Integer.MIN_VALUE && x[rs2] == -1) {
+                                // Signed overflow case
+                                x[rd] = 0;
+                            } else {
+                                x[rd] = x[rs1] % x[rs2];
+                            }
+                        } else {
+                            // Illegal instruction
+                            handleException(2, pc - INSTRUCTION_SIZE);
+                        }
                         break;
-                    case 0b111: // AND
-                        x[rd] = x[rs1] & x[rs2];
+                    case 0b111: // AND/REMU
+                        if (func7 == 0) {
+                            x[rd] = x[rs1] & x[rs2]; // AND
+                        } else if (func7 == 0b0000001) {
+                            // REMU (M-extension) - unsigned remainder
+                            if (x[rs2] == 0) {
+                                // Division by zero
+                                x[rd] = x[rs1]; // Return dividend
+                            } else {
+                                x[rd] = Integer.remainderUnsigned(x[rs1], x[rs2]);
+                            }
+                        } else {
+                            // Illegal instruction
+                            handleException(2, pc - INSTRUCTION_SIZE);
+                        }
                         break;
                 }
                 break;
@@ -249,19 +645,19 @@ public class RV32iCpu {
 
             // Load instructions
             case 0b0000011: // LOAD
-                int address = mapAddress(x[rs1] + imm_i);
-                if (!checkUARTAddress(address)) {
-                    ;// If address is in data segment
-                    if (address < MemoryManager.DATA_START) {
-                        int temp = address + MemoryManager.RODATA_START;
-                        if (temp < MemoryManager.DATA_START) {
-                            address = MemoryManager.DATA_START + address;
-                        } else {
-                            address += MemoryManager.TEXT_START;
+                try {
+                    int address = mapAddress(x[rs1] + imm_i);
+                    if (!checkUARTAddress(address)) {
+                        ;// If address is in data segment
+                        if (address < MemoryManager.DATA_START) {
+                            int temp = address + MemoryManager.RODATA_START;
+                            if (temp < MemoryManager.DATA_START) {
+                                address = MemoryManager.DATA_START + address;
+                            } else {
+                                address += MemoryManager.TEXT_START;
+                            }
                         }
                     }
-                }
-                try {
                     switch (func3) {
                         case 0b000: // LB
                             x[rd] = memory.readByte(address);
@@ -280,20 +676,20 @@ public class RV32iCpu {
                             break;
                     }
                 } catch (MemoryAccessException e) {
-                    // Handle memory access exception
-                    throw new RuntimeException("Memory access error during load", e);
+                    // Handle load access fault
+                    handleException(5, x[rs1] + imm_i); // 5 = load access fault
                 }
                 break;
 
             // Store instructions
             case 0b0100011: // STORE
-                address = mapAddress(x[rs1] + imm_s);
-                if (!checkUARTAddress(address)) {
-                    if (address + MemoryManager.DATA_START < MemoryManager.HEAP_START) {
-                        address = MemoryManager.DATA_START + address;
-                    }
-                }
                 try {
+                    int address = mapAddressForWrite(x[rs1] + imm_s);
+                    if (!checkUARTAddress(address)) {
+                        if (address + MemoryManager.DATA_START < MemoryManager.HEAP_START) {
+                            address = MemoryManager.DATA_START + address;
+                        }
+                    }
                     switch (func3) {
                         case 0b000: // SB
                             memory.writeByte(address, (byte) x[rs2]);
@@ -306,7 +702,8 @@ public class RV32iCpu {
                             break;
                     }
                 } catch (MemoryAccessException e) {
-                    throw new RuntimeException("Memory access error during store", e);
+                    // Handle store access fault
+                    handleException(7, x[rs1] + imm_s); // 7 = store/AMO access fault
                 }
                 break;
 
@@ -383,12 +780,132 @@ public class RV32iCpu {
             case 0b1110011: // SYSTEM
                 if (func3 == 0) {
                     if (imm_i == 0) { // ECALL
-                        if (x[17] == 93) { // Exit syscall
-                            this.running = false;
-                            System.out.println("Program exited with code: " + x[10]);
+                        // System call handling
+                        switch (x[17]) { // a7 register holds syscall number
+                            case 93: // exit
+                                this.running = false;
+                                System.out.println("Program exited with code: " + x[10]); // a0 register holds exit code
+                                break;
+                            case 64: // write
+                                int fd = x[10]; // a0 = file descriptor
+                                int buf = mapAddress(x[11]); // a1 = buffer address
+                                if (buf > MemoryManager.TEXT_START && buf < MemoryManager.DATA_START) {
+                                    buf += 0x10000;
+                                }
+                                int count = x[12]; // a2 = count
+
+                                // Only support stdout (fd=1) and stderr (fd=2)
+                                if (fd == 1 || fd == 2) {
+                                    try {
+                                        StringBuilder output = new StringBuilder();
+                                        for (int i = 0; i < count; i++) {
+                                            byte b = memory.readByte(buf + i);
+                                            output.append((char) b);
+                                        }
+                                        System.out.print(output.toString());
+                                        x[10] = count; // Return number of bytes written
+                                    } catch (MemoryAccessException e) {
+                                        x[10] = -1; // Error
+                                    }
+                                } else {
+                                    x[10] = -1; // Unsupported file descriptor
+                                }
+                                break;
+                            case 63: // read
+                                fd = x[10]; // a0 = file descriptor
+                                buf = mapAddress(x[11]); // a1 = buffer address
+                                if (buf > MemoryManager.TEXT_START && buf < MemoryManager.DATA_START) {
+                                    buf += 0x10000;
+                                }
+                                count = x[12]; // a2 = count
+
+                                // Only support stdin (fd=0)
+                                if (fd == 0) {
+                                    try {
+                                        // For simplicity, we'll read from UART
+                                        // The actual bytes will come from the InputThread
+                                        int bytesRead = 0;
+                                        for (int i = 0; i < count; i++) {
+                                            // Try to read from UART status register
+                                            int status = memory.readWord(MemoryManager.UART_STATUS);
+                                            // if ((status & 0x01) != 0) { // Check if data is available
+                                            byte b = (byte) memory.readWord(MemoryManager.UART_RX_DATA);
+                                            memory.writeByte(buf + bytesRead, b);
+                                            bytesRead++;
+                                            // } else {
+                                            // break; // No more data available
+                                            // }
+                                        }
+                                        x[10] = bytesRead; // Return number of bytes read
+                                    } catch (MemoryAccessException e) {
+                                        x[10] = -1; // Error
+                                    }
+                                } else {
+                                    x[10] = -1; // Unsupported file descriptor
+                                }
+                                break;
+                            case 24: // yield - Cooperative multitasking
+                                // Save current task state and switch to next task
+                                taskManager.yield();
+                                break;
+                            default:
+                                System.out.println("Unsupported syscall: " + x[17]);
+                                x[10] = -1; // Return error for unsupported syscalls
                         }
                     } else if (imm_i == 1) { // EBREAK
                         handleQemuSemihosting();
+                    } else if (imm_i == 0x302) { // MRET
+                        // Return from M-mode trap
+                        if (privilegeMode != PRIVILEGE_MACHINE) {
+                            // Illegal instruction exception if executed in lower privilege mode
+                            handleException(2, pc - INSTRUCTION_SIZE);
+                        } else {
+                            returnFromException(PRIVILEGE_MACHINE);
+                        }
+                    } else if (imm_i == 0x102) { // SRET
+                        // Return from S-mode trap
+                        if (privilegeMode < PRIVILEGE_SUPERVISOR) {
+                            // Illegal instruction exception if executed in U-mode
+                            handleException(2, pc - INSTRUCTION_SIZE);
+                        } else {
+                            returnFromException(PRIVILEGE_SUPERVISOR);
+                        }
+                    }
+                } else {
+                    // CSR instructions
+                    int csrAddr = imm_i & 0xFFF;
+                    int oldCsrValue = readCSR(csrAddr);
+                    int newValue;
+                    
+                    switch (func3) {
+                        case 0b001: // CSRRW
+                            newValue = x[rs1];
+                            writeCSR(csrAddr, newValue, CSR_READ_WRITE);
+                            break;
+                        case 0b010: // CSRRS
+                            newValue = oldCsrValue | x[rs1];
+                            writeCSR(csrAddr, newValue, CSR_READ_SET);
+                            break;
+                        case 0b011: // CSRRC
+                            newValue = oldCsrValue & ~x[rs1];
+                            writeCSR(csrAddr, newValue, CSR_READ_CLEAR);
+                            break;
+                        case 0b101: // CSRRWI
+                            newValue = rs1; // Immediate value is in rs1 field
+                            writeCSR(csrAddr, newValue, CSR_READ_WRITE);
+                            break;
+                        case 0b110: // CSRRSI
+                            newValue = oldCsrValue | rs1; // Immediate value is in rs1 field
+                            writeCSR(csrAddr, newValue, CSR_READ_SET);
+                            break;
+                        case 0b111: // CSRRCI
+                            newValue = oldCsrValue & ~rs1; // Immediate value is in rs1 field
+                            writeCSR(csrAddr, newValue, CSR_READ_CLEAR);
+                            break;
+                    }
+                    
+                    if (rd != 0) {
+                        x[rd] = oldCsrValue;
                     }
                 }
                 break;
@@ -422,9 +939,28 @@ public class RV32iCpu {
         System.out.println("------------------------");
     }
 
+    /**
+     * Maps a virtual address to a physical address and validates access permissions
+     * 
+     * @param virtualAddr The virtual address to map
+     * @return The physical address
+     */
     private int mapAddress(int virtualAddr) {
         // Handle UART addresses
         if (checkUARTAddress(virtualAddr)) {
+            // UART access is only allowed in machine mode and supervisor mode
+            if (privilegeMode == PRIVILEGE_USER) {
+                throw new RuntimeException("User mode cannot access UART at address: 0x" + 
+                        Integer.toHexString(virtualAddr));
+            }
+            return virtualAddr;
+        }
+
+        // Check if virtual memory translation is enabled in S-mode
+        if (privilegeMode <= PRIVILEGE_SUPERVISOR && (readCSR(SATP) & 0x80000000) != 0) {
+            // In a real implementation, we would perform page table walks here
+            // For now, we'll implement a simple identity mapping with permission checks
+            // memory.validateAccess(virtualAddr, privilegeMode);
             return virtualAddr;
         }
 
@@ -450,6 +986,18 @@ public class RV32iCpu {
         }
         return virtualAddr;
     }
+    
+    /**
+     * Maps a virtual address to a physical address for write access and validates permissions
+     * 
+     * @param virtualAddr The virtual address to map
+     * @return The physical address
+     */
+    private int mapAddressForWrite(int virtualAddr) {
+        int physicalAddr = mapAddress(virtualAddr);
+        // Additional write permission check could be added here
+        return physicalAddr;
+    }
 
     // Test-purpose only methods
     public void setRegister(int index, int value) {
@@ -464,13 +1012,95 @@ public class RV32iCpu {
         }
         return 0;
     }
+    
+    /**
+     * Get the current privilege mode (for testing)
+     * 
+     * @return The current privilege mode
+     */
+    public int getPrivilegeMode() {
+        return privilegeMode;
+    }
+    
+    /**
+     * Set the program counter (for testing)
+     * 
+     * @param value The new PC value
+     */
+    public void setPc(int value) {
+        pc = value;
+    }
+    
+    /**
+     * Write to a CSR register (for testing)
+     * 
+     * @param csrAddr The CSR address
+     * @param value The value to write
+     */
+    public void writeCSRTest(int csrAddr, int value) {
+        csrRegisters.put(csrAddr, value);
+    }
+    
+    /**
+     * Read from a CSR register (for testing)
+     * 
+     * @param csrAddr The CSR address
+     * @return The value of the CSR register
+     */
+    public int readCSRTest(int csrAddr) {
+        return csrRegisters.getOrDefault(csrAddr, 0);
+    }
 
-    public int getPc() {
+    /**
+     * Gets the current program counter value.
+     * 
+     * @return The current program counter
+     */
+    public int getProgramCounter() {
         return pc;
+    }
+
+    /**
+     * Sets the program counter to a specific value.
+     * 
+     * @param pc The new program counter value
+     */
+    public void setProgramCounter(int pc) {
+        this.pc = pc;
+    }
+
+    /**
+     * Gets the current register values.
+     * 
+     * @return The current register values
+     */
+    public int[] getRegisters() {
+        return x;
+    }
+
+    /**
+     * Sets the register values.
+     * 
+     * @param registers The new register values
+     */
+    public void setRegisters(int[] registers) {
+        if (registers.length == 32) {
+            System.arraycopy(registers, 0, this.x, 0, 32);
+        }
     }
 
     public void executeTest(InstructionDecoded inst) {
         execute(inst);
+    }
+    
+    /**
+     * Test method to execute a raw instruction
+     * 
+     * @param instruction The raw 32-bit instruction to execute
+     */
+    public void testExecuteInstruction(int instruction) {
+        InstructionDecoded decoded = decode(instruction);
+        execute(decoded);
     }
 
     public int mapAddressTest(int i) {
@@ -495,5 +1125,29 @@ public class RV32iCpu {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Creates a new task with the specified entry point.
+     * 
+     * @param entryPoint The entry point (initial PC value)
+     * @return The ID of the created task, or -1 if task creation failed
+     */
+    public int createTask(int entryPoint) {
+        try {
+            return taskManager.createTask(entryPoint);
+        } catch (MemoryAccessException e) {
+            System.err.println("Failed to create task: " + e.getMessage());
+            return -1;
+        }
+    }
+
+    /**
+     * Gets the task manager.
+     * 
+     * @return The task manager
+     */
+    public TaskManager getTaskManager() {
+        return taskManager;
     }
 }

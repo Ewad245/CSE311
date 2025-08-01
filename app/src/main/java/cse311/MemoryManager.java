@@ -10,6 +10,17 @@ public class MemoryManager {
     public static final int DATA_START = 0x2010000;
     public static final int HEAP_START = 0x3010000;
     public static final int STACK_START = 0x7C00000;
+    
+    // User mode memory layout constants
+    public static final int USER_TEXT_START = 0x00200000;
+    public static final int USER_RODATA_START = 0x00210000;
+    public static final int USER_DATA_START = 0x00220000;
+    public static final int USER_HEAP_START = 0x00230000;
+    public static final int USER_STACK_START = 0x00300000;
+    
+    // Machine mode reserved memory regions
+    public static final int MACHINE_RESERVED_START = 0x00400000;
+    public static final int MACHINE_RESERVED_END = 0x00500000;
 
     // UART Memory-Mapped Registers
     public static final int UART_BASE = 0x10000000;
@@ -21,6 +32,13 @@ public class MemoryManager {
     private int heapPtr;
     private int stackPtr;
 
+    public MemoryManager() {
+        this.memory = new SimpleMemory();
+        this.heapPtr = HEAP_START;
+        this.stackPtr = STACK_START;
+        this.uart = new Uart();
+    }
+    
     public MemoryManager(SimpleMemory memory) {
         this.memory = memory;
         this.heapPtr = HEAP_START;
@@ -49,6 +67,18 @@ public class MemoryManager {
             throw new MemoryAccessException("Out of memory");
         }
         return allocated;
+    }
+    
+    /**
+     * Simple no-op free implementation.
+     * This is a placeholder for a future implementation of memory deallocation.
+     * Currently, memory is not actually freed and will only be reclaimed on reset().
+     * 
+     * @param address The address to free (ignored in this implementation)
+     */
+    public void free(int address) {
+        // No-op implementation for now
+        // In a real implementation, we would track freed blocks and reuse them
     }
 
     // Memory access methods
@@ -153,18 +183,90 @@ public class MemoryManager {
     }
 
     // Validation methods
-    private void validateAccess(int address) throws MemoryAccessException {
+    /**
+     * Validate memory access based on address and current CPU privilege mode
+     * 
+     * @param address The memory address to validate
+     * @param privilegeMode The current CPU privilege mode
+     * @throws MemoryAccessException If the access is invalid
+     */
+    public void validateAccess(int address, int privilegeMode) throws MemoryAccessException {
+        // Check if address is within valid memory range
         if (address < TEXT_START || address > STACK_START) {
             throw new MemoryAccessException("Invalid memory access: " +
                     String.format("0x%08X", address));
         }
+        
+        // Check PMP (Physical Memory Protection) if not in Machine mode
+        if (privilegeMode != RV32iCpu.PRIVILEGE_MACHINE) {
+            // In a real implementation, we would check PMP registers here
+            // For now, we'll implement a simple protection scheme:
+            // User mode can only access user memory regions
+            if (privilegeMode == RV32iCpu.PRIVILEGE_USER) {
+                // Example: Restrict user mode from accessing certain memory regions
+                if (address < USER_TEXT_START || address >= USER_STACK_START) {
+                    throw new MemoryAccessException("User mode cannot access privileged memory at address: 0x" 
+                            + Integer.toHexString(address));
+                }
+            }
+        }
     }
 
-    private void validateWriteAccess(int address) throws MemoryAccessException {
+    /**
+     * Validate memory write access based on address and current CPU privilege mode
+     * 
+     * @param address The memory address to validate
+     * @param privilegeMode The current CPU privilege mode
+     * @throws MemoryAccessException If the write access is invalid
+     */
+    public void validateWriteAccess(int address, int privilegeMode) throws MemoryAccessException {
+        if (address >= TEXT_START && address < DATA_START) {
+            throw new MemoryAccessException("Cannot write to text segment at address: 0x" 
+                    + Integer.toHexString(address));
+        }
+        
         if (address >= (DATA_START + 0x1000000)) {
             throw new MemoryAccessException("Cannot write to data segment: " +
                     String.format("0x%08X", address));
         }
+        
+        // Check PMP (Physical Memory Protection) if not in Machine mode
+        if (privilegeMode != RV32iCpu.PRIVILEGE_MACHINE) {
+            // In a real implementation, we would check PMP registers here
+            // For now, we'll implement a simple protection scheme:
+            
+            // User mode can only write to user memory regions
+            if (privilegeMode == RV32iCpu.PRIVILEGE_USER) {
+                // Example: Restrict user mode from writing to certain memory regions
+                if (address < USER_DATA_START || address >= USER_STACK_START) {
+                    throw new MemoryAccessException("User mode cannot write to privileged memory at address: 0x" 
+                            + Integer.toHexString(address));
+                }
+            }
+            
+            // Supervisor mode has more access but still restricted from some regions
+            if (privilegeMode == RV32iCpu.PRIVILEGE_SUPERVISOR) {
+                // Example: Restrict supervisor mode from writing to machine-only regions
+                if (address >= MACHINE_RESERVED_START && address < MACHINE_RESERVED_END) {
+                    throw new MemoryAccessException("Supervisor mode cannot write to machine-only memory at address: 0x" 
+                            + Integer.toHexString(address));
+                }
+            }
+        }
+    }
+    
+    /**
+     * Legacy method for backward compatibility
+     */
+    private void validateAccess(int address) throws MemoryAccessException {
+        validateAccess(address, RV32iCpu.PRIVILEGE_MACHINE);
+    }
+
+    /**
+     * Legacy method for backward compatibility
+     */
+    private void validateWriteAccess(int address) throws MemoryAccessException {
+        validateWriteAccess(address, RV32iCpu.PRIVILEGE_MACHINE);
     }
 
     // Debug utilities
